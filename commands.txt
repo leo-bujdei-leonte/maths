@@ -4,4 +4,4 @@ source .venv/bin/activate
 # commits
 git add .
 git commit -m "partial implementation" 
-git push --set-upstream origin alexandra/witt-map-program
+git push 
