@@ -1,5 +1,4 @@
-gnureadline == 8.2.13
-typer == 1.16.0
+typer == 0.16.0
 
 sympy == 1.14.0
 numpy == 2.2.6
