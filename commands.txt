@@ -1,0 +1,3 @@
+# activate virtual environment (to use the right python version and packages)
+source .venv/bin/activate
+
