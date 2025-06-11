@@ -86,11 +86,13 @@ def compute_generic_witt_map(n: int, basis_partition: list[tuple[int]]) -> Expre
 def get_alpha_coefficients_matrix(n: int, expr: Expression, basis_partition: list[Symbol]) -> np.ndarray:
     res = [[None] * (n+1) for _ in range(n+1)]
     a, b = symbols('a b')
-
+    v =[]
     for i in range(n+1):
         for j in range(n+1):
-            res[i][j] = basis_partition.coeff()
-        print(res[i][j])
+            coeff_ij = expr.a_b_expr.expand().coeff(a, i).coeff(b, j)
+            v.append(coeff_ij)
+            print(v)
+        
 
 def get_expanded_coefficients_vector(expr: Expression, basis_partition: list[Symbol]) -> np.ndarray:
     ...
@@ -109,7 +111,7 @@ def main(
     expr_with_alphas = compute_generic_witt_map(expr.n, basis_partition)
     print(expr_with_alphas)
     
-    # M = get_alpha_coefficients_matrix(expr.n, expr_with_alphas, basis_partition)
+    M = get_alpha_coefficients_matrix(expr.n, expr_with_alphas, basis_partition)
     # b = get_expanded_coefficients_vector(expr, basis_partition)
 
     # alphas = solve_linear_system(M, b)
