@@ -16,9 +16,18 @@ app = typer.Typer(pretty_exceptions_enable=False)
 class Expression:
     a_b_expr: Expr
     n: int
+    """"
 
+    Takes a string of the form <expr in a and b>* t^n 
+    and outputs an expression object.
+
+
+    """
     @classmethod
     def from_str(cls, s: str) -> Expression:
+        """
+        Parse the given string into an an expression with a and b and a power.
+        """
         # TODO for multiple t, split by + after splitting by t
         a_b_substr, n_substr = s.split('t')
 
@@ -38,7 +47,10 @@ class Expression:
 
     def __mul__(self, other: Expression | Symbol) -> Expression:
         res = deepcopy(self)
+        """
+        Defines the noncommutative multiplication.
 
+        """
         if isinstance(other, Expression):
             res.a_b_expr = self.a_b_expr * other.a_b_expr.subs('a', f'a + {self.n}')
             res.n += other.n
@@ -49,6 +61,14 @@ class Expression:
         return res
     
     def __add__(self, other: Expression) -> Expression:
+        """
+        Adds two expressions with the same power of t.
+
+        Raises: 
+        NotImplementedError: if the degree of t does not match.
+
+        Returns: Sum expression.
+        """
         res = deepcopy(self)
 
         if self.n == other.n:
@@ -60,6 +80,12 @@ class Expression:
 
 
 def get_basis_partition(n) -> list[tuple[int]]:
+    """
+
+    Generated all integer partitions of n into increasing parts.
+
+    TODO - implement the decreasing part as well with question.
+    """
     def partitions(n, I=1):
         yield (n,)
         for i in range(I, n//2 + 1):
@@ -71,6 +97,9 @@ def get_basis_partition(n) -> list[tuple[int]]:
     return list(partitions(n))
 
 def compute_generic_witt_map(n: int, basis_partition: list[tuple[int]]) -> Expression:
+    """
+    Constructs an expression as a linear combination of partitions pf n, with symbolic coefficents alpha_i.
+    """
     a, b = symbols('a b')
     alphas = symbols(' '.join([f'alpha_{i}' for i in range(len(basis_partition))]))
     generic_witt_map = Expression(sympify('0'), n)
@@ -85,6 +114,11 @@ def compute_generic_witt_map(n: int, basis_partition: list[tuple[int]]) -> Expre
     return generic_witt_map
 
 def get_alpha_coefficients_matrix(n: int, expr: Expression, basis_partition: list[tuple[int]]) -> np.ndarray:
+    """
+    Builds the matrix M of coefficient for alpha variable from a generic expression, by identifying 
+    how each symbolic alpha_i appears in the coefficient of the expression.
+    
+    """
     res = []
     alphas = symbols(' '.join([f'alpha_{i}' for i in range(len(basis_partition))]))
     a, b = symbols('a b')
@@ -104,6 +138,9 @@ def get_alpha_coefficients_matrix(n: int, expr: Expression, basis_partition: lis
     return np.array(res, dtype=np.float32)    
 
 def get_expanded_coefficients_vector(n: int, expr: Expression, basis_partition: list[tuple[int]]) -> np.ndarray:
+    """
+    Extracts the expanded coefficients of an expression for all combinations of powers of a and b.
+    """
     a, b = symbols('a b')
     v =[]
     for i in range(n+1):
@@ -114,9 +151,15 @@ def get_expanded_coefficients_vector(n: int, expr: Expression, basis_partition: 
 
 
 def solve_linear_system(M: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """
+    Solves the least squares linear system M*alpha =y.
+    """
     return np.linalg.lstsq(M, y)[0]
 
 def result_from_alphas(alphas: np.ndarray, basis_partition: list[Symbol]) -> str:
+    """
+    Converts the alphas into a basis string.
+    """
     s = ""
     for alpha, partition in zip(alphas, basis_partition):
         if alpha != 0:
