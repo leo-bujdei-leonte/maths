@@ -5,7 +5,6 @@ and sends them to an expression involving a,b,t, that is, \psi(e_n) = -(a+nb)t**
 This program takes a computed form of \psi(\sum_i e_i) and it computes the original e_i 
 in an increasing power bases on the partitions of the power of 't'.
  
-
 Usage: python script.py <input_file>
 
 The input file must contain a string of the form: (expression in a and b )* t**n
@@ -25,11 +24,13 @@ app = typer.Typer(pretty_exceptions_enable=False)
 
 
 class Expression:
-    a_b_expr: Expr
-    n: int
     """
     Takes a string of the form <expr in a and b>* t**n 
     and outputs an expression object.
+
+    Attributes:
+    a_b_expr: Expr
+    n: int
 
     Methods:
     from_str(): Parses a string of the form <a_b_expr>*t**n into an Expression.
