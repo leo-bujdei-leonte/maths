@@ -1,5 +1,16 @@
 """
-TODO description and docstrings
+
+This program analyzes symbolic expressions involving a noncommutative operation. 
+It parses the input expression and extracts the power 'n' of the variable 't'. 
+Then, it generated a generic form with coefficients 'alpha_i' based on the incresing integers partitions of 'n'. 
+Moreover, it builds and solves a linear system to find the coefficients 'alpha_i'. 
+If a solution exists, it outputs the original input as a linear combination of basis elements under the noncommutaitve multiplication.
+
+Usage: python script.py <input_file>
+
+The input file must contain a string of the form: (expression in a and b )* t**n
+
+Example: (a**2 + 2ab + b**3)* t**2
 """
 from __future__ import annotations
 import typer
@@ -16,17 +27,24 @@ app = typer.Typer(pretty_exceptions_enable=False)
 class Expression:
     a_b_expr: Expr
     n: int
-    """"
-
-    Takes a string of the form <expr in a and b>* t^n 
+    """
+    Takes a string of the form <expr in a and b>* t**n 
     and outputs an expression object.
 
+    Attributes:
+    a_b_expr (Expr): The symbolic expression in terms of 'a' and 'b'.
+    n (int): The power of 't'.
 
+    Methods:
+    from_str(): Parses a string of the form <a_b_expr>*t**n into an Expression.
+    _str_(): Returns a string representation.
+    _mul_(): Defines a noncommutative multiplication.
+    _add_(): Adds 2 expression with the same power of 't'. 
     """
     @classmethod
     def from_str(cls, s: str) -> Expression:
         """
-        Parse the given string into an an expression with a and b and a power.
+        Parse the given string into an an expression with 'a' and 'b' and the power of 't'.
         """
         # TODO for multiple t, split by + after splitting by t
         a_b_substr, n_substr = s.split('t')
@@ -50,6 +68,9 @@ class Expression:
         """
         Defines the noncommutative multiplication.
 
+        For another expression, the multiplication shift the variable 'a' is shifted by 'self.n'.
+
+        Returns: Multiplication of two elements using the noncommutative rule.
         """
         if isinstance(other, Expression):
             res.a_b_expr = self.a_b_expr * other.a_b_expr.subs('a', f'a + {self.n}')
@@ -65,9 +86,9 @@ class Expression:
         Adds two expressions with the same power of t.
 
         Raises: 
-        NotImplementedError: if the degree of t does not match.
+        NotImplementedError: if the degrees of t does not match.
 
-        Returns: Sum expression.
+        Returns: Sum of the two expression.
         """
         res = deepcopy(self)
 
@@ -81,24 +102,24 @@ class Expression:
 
 def get_basis_partition(n) -> list[tuple[int]]:
     """
+    Generates all integer partitions of n into increasing parts.
 
-    Generated all integer partitions of n into increasing parts.
-
-    TODO - implement the decreasing part as well with question.
+    Return:  Every partition of n into a sum of integers in increasing order.
+    Example:  3 -> [[1, 1, 1], [1, 2], [3]].
     """
+    # TODO implement the decreasing part as well with question.
+
     def partitions(n, I=1):
         yield (n,)
         for i in range(I, n//2 + 1):
             for p in partitions(n-i, i):
                 yield (i,) + p
 
-    # return every partition of n into a sum of integers in increasing order
-    # e.g. 3 -> [[1, 1, 1], [1, 2], [3]]
     return list(partitions(n))
 
 def compute_generic_witt_map(n: int, basis_partition: list[tuple[int]]) -> Expression:
     """
-    Constructs an expression as a linear combination of partitions pf n, with symbolic coefficents alpha_i.
+    Constructs an expression as a linear combination of partitions of n, with symbolic coefficents alpha_i.
     """
     a, b = symbols('a b')
     alphas = symbols(' '.join([f'alpha_{i}' for i in range(len(basis_partition))]))
@@ -115,8 +136,7 @@ def compute_generic_witt_map(n: int, basis_partition: list[tuple[int]]) -> Expre
 
 def get_alpha_coefficients_matrix(n: int, expr: Expression, basis_partition: list[tuple[int]]) -> np.ndarray:
     """
-    Builds the matrix M of coefficient for alpha variable from a generic expression, by identifying 
-    how each symbolic alpha_i appears in the coefficient of the expression.
+    Builds the matrix M of coefficient for alpha variable. 
     
     """
     res = []
@@ -152,13 +172,13 @@ def get_expanded_coefficients_vector(n: int, expr: Expression, basis_partition: 
 
 def solve_linear_system(M: np.ndarray, y: np.ndarray) -> np.ndarray:
     """
-    Solves the least squares linear system M*alpha =y.
+    Solves the least squares linear system M*alpha=y.
     """
     return np.linalg.lstsq(M, y)[0]
 
 def result_from_alphas(alphas: np.ndarray, basis_partition: list[Symbol]) -> str:
     """
-    Converts the alphas into a basis string.
+    Converts the alphas into a string.
     """
     s = ""
     for alpha, partition in zip(alphas, basis_partition):
