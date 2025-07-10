@@ -1,6 +1,6 @@
 """
 Let \psi: U(W_+) -> K[a,b][\sigma,t] be a map that takes the basis elements of U(W_+)
-and send them to an expression involving a,b,t, that is, \psi(e_n) = -(a+nb)t**n.
+and sends them to an expression involving a,b,t, that is, \psi(e_n) = -(a+nb)t**n.
 
 This program takes a computed form of \psi(\sum_i e_i) and it computes the original e_i 
 in an increasing power bases on the partitions of the power of 't'.
