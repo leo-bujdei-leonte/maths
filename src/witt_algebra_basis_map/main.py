@@ -24,6 +24,8 @@ app = typer.Typer(pretty_exceptions_enable=False)
 
 
 class Expression:
+    a_b_expr: Expr
+    n: int
     """
     Takes a string of the form <expr in a and b>* t**n 
     and outputs an expression object.
