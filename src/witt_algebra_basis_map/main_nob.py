@@ -1,15 +1,6 @@
 """
-Let \psi: U(W_+) -> K[a,b][\sigma,t] be a map that takes the basis elements of U(W_+)
-and sends them to an expression involving a,b,t, that is, \psi(e_n) = -(a+nb)t**n.
-
-This program takes a computed form of \psi(\sum_i e_i) and it computes the original e_i 
-in an increasing power bases on the partitions of the power of 't'.
- 
-Usage: python script.py <input_file>
-
-The input file must contain a string of the form: (expression in a and b )* t**n
-
-Example: (a**2 + 2ab + b**3)* t**2
+unfinished//not used
+TODO description and docstrings
 """
 from __future__ import annotations
 import typer
@@ -24,77 +15,48 @@ app = typer.Typer(pretty_exceptions_enable=False)
 
 
 class Expression:
-    a_b_expr: Expr
-    n: int
-    """
-    Takes a string of the form <expr in a and b>* t**n 
-    and outputs an expression object.
-
-    Attributes:
-    a_b_expr: Expr
+    a_expr: Expr
     n: int
 
-    Methods:
-    from_str(): Parses a string of the form <a_b_expr>*t**n into an Expression.
-    _str_(): Returns a string representation.
-    _mul_(): Defines a noncommutative multiplication.
-    _add_(): Adds 2 expression with the same power of 't'. 
-    """
+    def __init__(self, a_expr: Expr, n: int) -> None:
+        self.a_expr = a_expr
+        self.n = n
+        
+
     @classmethod
     def from_str(cls, s: str) -> Expression:
-        """
-        Parse the given string into an an expression with 'a' and 'b' and the power of 't'.
-        """
         # TODO for multiple t, split by + after splitting by t
-        if 't' not in s:
-            raise ValueError("Cannot find 't' term in equation")
-        a_b_substr, n_substr = s.split('t')
+        a_substr, n_substr = s.split('t')
 
-        a_b_substr = "*".join(a_b_substr.split('*')[:-1])
-        a_b_expr = parse_expr(a_b_substr) # , evaluate=False)
+        a_substr = "*".join(a_substr.split('*')[:-1])
+        a_expr = parse_expr(a_substr) # , evaluate=False)
 
-        if n_substr:
-            n = int(n_substr[2:])
-        else:
-            n = 1
+        n = int(n_substr[2:])
 
-        return cls(a_b_expr, n)
+        return cls(a_expr, n)
 
-    def __init__(self, a_b_expr: Expr, n: int):
-        self.a_b_expr = a_b_expr
-        self.n = n
+   
     
     def __str__(self) -> str:
-        return "(" + str(self.a_b_expr.expand()) + f") * t^{self.n}"
+        return "(" + str(self.a_expr.expand()) + f") * t^{self.n}"
 
     def __mul__(self, other: Expression | Symbol) -> Expression:
         res = deepcopy(self)
-        """
-        Defines the noncommutative multiplication.
 
-        """
         if isinstance(other, Expression):
-            res.a_b_expr = self.a_b_expr * other.a_b_expr.subs('a', f'a + {self.n}')
+            res.a_expr = self.a_expr * other.a_expr.subs('a', f'a + {self.n}')
             res.n += other.n
         
         elif isinstance(other, Symbol):
-            res.a_b_expr = self.a_b_expr * other
+            res.a_expr = self.a_expr * other
 
         return res
     
     def __add__(self, other: Expression) -> Expression:
-        """
-        Adds two expressions with the same power of t.
-
-        Raises: 
-        NotImplementedError: if the degrees of t does not match.
-
-        Returns: Sum of the two expression.
-        """
         res = deepcopy(self)
-
+        
         if self.n == other.n:
-            res.a_b_expr += other.a_b_expr
+            res.a_expr += other.a_expr
         else:
             raise NotImplementedError()
         
@@ -102,57 +64,41 @@ class Expression:
 
 
 def get_basis_partition(n) -> list[tuple[int]]:
-    """
-    Generates all integer partitions of n into increasing parts.
-
-    Return:  Every partition of n into a sum of integers in increasing order.
-    Example:  3 -> [[1, 1, 1], [1, 2], [3]].
-    """
-    # TODO implement the decreasing part as well with question.
-
     def partitions(n, I=1):
         yield (n,)
         for i in range(I, n//2 + 1):
             for p in partitions(n-i, i):
                 yield (i,) + p
 
+    # return every partition of n into a sum of integers in increasing order
+    # e.g. 3 -> [[1, 1, 1], [1, 2], [3]]
     return list(partitions(n))
-
+    
 def compute_generic_witt_map(n: int, basis_partition: list[tuple[int]]) -> Expression:
-    """
-    Constructs an expression as a linear combination of partitions of n, with symbolic coefficents alpha_i.
-    """
-    a, b = symbols('a b')
+    a = symbols('a')
     alphas = symbols(' '.join([f'alpha_{i}' for i in range(len(basis_partition))]))
-    if n == 1:
-        alphas = [alphas]
     generic_witt_map = Expression(sympify('0'), n)
-    print(alphas)
+
+    
     for alpha, partition in zip(alphas, basis_partition):
         mapp = Expression(sympify('1'), 0)
         for i in range(len(partition)):
-            expr= Expression(-a-partition[i]*b,partition[i])
+            expr= Expression(a,partition[i])
             mapp *= expr 
         generic_witt_map = generic_witt_map + mapp * alpha
-    
+
     return generic_witt_map
 
 def get_alpha_coefficients_matrix(n: int, expr: Expression, basis_partition: list[tuple[int]]) -> np.ndarray:
-    """
-    Builds the matrix M of coefficient for alpha variable, where M[i,j] is the coeffcient of alpha_j
-      in the expression for the a**ib**j term.
-    
-    """
     res = []
     alphas = symbols(' '.join([f'alpha_{i}' for i in range(len(basis_partition))]))
-    if n == 1:
-        alphas = [alphas]
-    a, b = symbols('a b')
+    a = symbols('a')
     v =[]
+
+
     for i in range(n+1):
-        for j in range(n+1):
-            coeff_ij = expr.a_b_expr.expand().coeff(a, i).coeff(b, j)
-            v.append(coeff_ij)
+            coeff_i = expr.a_expr.expand().coeff(a, i)
+            v.append(coeff_i)
 
     for eq in v:
         l=[]
@@ -164,28 +110,25 @@ def get_alpha_coefficients_matrix(n: int, expr: Expression, basis_partition: lis
     return np.array(res, dtype=np.float32)    
 
 def get_expanded_coefficients_vector(n: int, expr: Expression, basis_partition: list[tuple[int]]) -> np.ndarray:
-    """
-    Extracts the expanded coefficients of an expression for all combinations of powers of a and b.
-    """
-    a, b = symbols('a b')
+    a = symbols('a')
     v =[]
+
+
     for i in range(n+1):
-        for j in range(n+1):
-            x = expr.a_b_expr.expand().coeff(a, i).coeff(b, j)
+            x = expr.a_expr.expand().coeff(a, i)
             v.append(x) 
+    
     return np.array(v, dtype=np.float32)
+    
 
 
 def solve_linear_system(M: np.ndarray, y: np.ndarray) -> np.ndarray:
     return np.linalg.lstsq(M, y)[0]
 
 def result_from_alphas(alphas: np.ndarray, basis_partition: list[Symbol]) -> str:
-    """
-    Converts the alphas into a string.
-    """
     s = ""
     for alpha, partition in zip(alphas, basis_partition):
-        if alpha != 0:
+        if not np.allclose(alpha, 0):
             if s == "" and alpha < 0:
                 s += "-"
             elif s != "":
@@ -226,7 +169,7 @@ def main(
     if verbose:
         print("Computed alpha results:", alphas)
 
-    if np.all(M @ alphas == y):
+    if np.allclose(M @ alphas, y):
         print(result_from_alphas(alphas, basis_partition))
     else:
         print("Element not in image!")
