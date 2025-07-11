@@ -1,39 +1,35 @@
-from sympy import symbols, simplify, expand
-
-# Define symbols
-a, b, t = symbols('a b t')
-
-# Define the sets
-x = {
-    b**2*(1-b)**2*t**9,
-    (a+b)*b**2*(1-b)**2*t**9,
-    (a+b)*(a+b+1)*(a+b+2)*(a+b+3)*(a+b+4)*b*(1-b)*t**9,
-    (a+b)*(a+b+1)*(a+3*b+2)*b*(1-b)*t**9,
-    (a+b)*(a+b+1)*(a+b+2)*(a+2*b+3)*b*(1-b)*t**9,
-    (a+b)*(a+4*b+1)*b*(1-b)*t**9,
-    (a+5*b)*b*(1-b)*t**9
-}
-
-y = {
-    b**2*(1-b)**2*t**9,
-    (a+b)*(a+b+1)*(a+b+2)*(a+b+3)*b*(1-b)*t**9,
-    (a+b)*(a+3*b+1)*b*(1-b)*t**9,
-    (a+b)*(a+b+1)*(a+2*b+2)*b*(1-b)*t**9,
-    (a+4*b)*b*(1-b)*t**9
-}
-
-# Use simplified expressions for accurate comparison
-x_simplified = set(simplify(expand(expr)) for expr in x)
-y_simplified = set(simplify(expand(expr)) for expr in y)
-
-# Compute the intersection
-z = x_simplified.intersection(y_simplified)
-
-# Print the simplified y set
-#for expr in sorted(y_simplified, key=str):
-#    print(expr)
+import numpy as py
+from sympy import symbols, Expr, Symbol, simplify, nsimplify, sympify
 
 
-print("\nIntersection of the sets:")
-for expr in sorted(z, key=str):
-    print(expr)
+print("This program prints the intersection of (B_+)y_n with (B_+)y_m!")
+
+def check_input(n,m):
+    if n >= m:
+        raise ValueError(f"n={n} must be less than m={m}")
+    if n < 4:
+        raise ValueError(f"n={n} must be at least 4")
+
+
+def valid_pairs(x):
+    pairs=[]
+    for i in range ((x-4)//2 +1):
+        for j in range (x-4-2*i +1):
+            pairs.append((i,j))
+    return pairs
+
+
+
+
+n=int(input("Enter your first weight: "))
+m=int(input("Enter your second weight: "))
+check_input(n,m)
+a, b = symbols("a b")
+terms = []
+pairs = valid_pairs(n)
+for i, j in pairs:
+    term = f"{{(a**{i}* (a+b)**{j}) b (1-b)y_{n+m}}}"
+    terms.append(term)
+print(f"The intersection is span_{{K}}" ,", ".join(terms))
+
+
