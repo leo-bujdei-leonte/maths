@@ -127,7 +127,6 @@ def compute_generic_witt_map(n: int, basis_partition: list[tuple[int]]) -> Expre
     if n == 1:
         alphas = [alphas]
     generic_witt_map = Expression(sympify('0'), n)
-    print(alphas)
     for alpha, partition in zip(alphas, basis_partition):
         mapp = Expression(sympify('1'), 0)
         for i in range(len(partition)):

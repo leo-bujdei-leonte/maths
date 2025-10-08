@@ -2,7 +2,7 @@ import numpy as py
 from sympy import symbols, Expr, Symbol, simplify, nsimplify, sympify
 
 
-print("This program prints the intersection of (B_+)y_n with (B_+)y_m!")
+print("This program prints the intersection of (B_+)y_n with (B_+)y_m given the total weight(filtration)!")
 
 def check_input(n,m):
     if n >= m:
