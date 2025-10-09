@@ -65,7 +65,7 @@ print(f"The result for e_1^3 g_22 is:")
 print(sympy.expand(e_1_cubed_g_22))
 
 
-# --- Calculation of e_1^3 * g_2,2 ---
+# --- Calculation of e_1^2 * g_2,3 ---
 
 # 1. Calculate g_2,3
 g_23 = g(2, 3)
@@ -74,7 +74,7 @@ g_23 = g(2, 3)
 e_1 = e(1)
 e_1_sq = multiply_operators(e_1, e_1)
 
-# 3. Calculate e_1^3 * g_22
+# 3. Calculate e_1^2 * g_23
 e_1_squared_g_23 = multiply_operators(e_1_sq, g_23)
 
 print(f"g_23 (for reference): {g_23}")

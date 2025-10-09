@@ -12,11 +12,11 @@ def main(coefficients):
 
     # define partial 'polynomial' as a list of coefficients
     # expression[i] is the coefficient of partial^i
-    expression = [0, - X**(coefficients[-1]+1)]
+    expression = [0, X**(coefficients[-1]+1)]
 
     # iteratively multiply the partials right-to-left
     for coefficient in coefficients[:-1][::-1]:
-        new_term = - X**(coefficient+1)
+        new_term = X**(coefficient+1)
 
         # add the new partials
         for i in range(0, len(expression)-1):
@@ -30,8 +30,8 @@ def main(coefficients):
 
     # turn the resulting expression into a string expression
     s = str(expression[1]) + " d"
-    for i in range(2, len(expression)):
-        s += " + " + str(expression[i]) + " d^" + str(i)
+    for i, subexpr in enumerate(expression[2:]):
+        s += " + " + str(subexpr) + " d^" + str(i+2)
     print(s)
 
 
