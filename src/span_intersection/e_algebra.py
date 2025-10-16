@@ -783,3 +783,16 @@ if __name__ == "__main__":
     else:
         print("Intersection is trivial (contains only zero).")
     print()
+
+
+
+    intersection3 = intersect_uw_bases(UW_basis(5), g_22, UW_basis(4), g_23)
+    print(f"Dimension of intersection: {len(intersection2)}")
+
+    if intersection2:
+        print("Intersection basis elements:")
+        for i, elem in enumerate(intersection2):
+            print(f"  [{i}]: {elem}")
+    else:
+        print("Intersection is trivial (contains only zero).")
+    print()
