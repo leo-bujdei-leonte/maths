@@ -786,6 +786,11 @@ if __name__ == "__main__":
 
 
 
+    print("=" * 60)
+    print("Another example: UW_basis(5)*g(2,2) and UW_basis(4)*g(2,3)")
+    print("=" * 60)
+    print()
+
     intersection3 = intersect_uw_bases(UW_basis(5), g_22, UW_basis(4), g_23)
     print(f"Dimension of intersection: {len(intersection2)}")
 
