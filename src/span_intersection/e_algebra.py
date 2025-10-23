@@ -14,14 +14,11 @@ Note: When m = n (same index), the rule doesn't apply, so e_n * e_n remains
 as e_n**2 or e_n*e_n. Powers of the same element don't simplify further.
 """
 
-from typing import Tuple, List, Any, Iterator, TYPE_CHECKING
+from typing import Tuple, List, Any, Iterator
 from sympy import Expr, Add, Mul, Pow, S
 from sympy.core.expr import AtomicExpr
 from functools import total_ordering
-
-if TYPE_CHECKING:
-    import numpy as np
-    import numpy.typing as npt
+import numpy as np
 
 
 @total_ordering
@@ -43,7 +40,7 @@ class E(AtomicExpr):
     def _hashable_content(self) -> Tuple[int]:
         return (self.index,)
 
-    def __lt__(self, other: Any) -> bool:
+    def __lt__(self, other: Any) -> bool:  # TODO remove
         if isinstance(other, E):
             return self.index < other.index
         return NotImplemented  # type: ignore
@@ -186,7 +183,7 @@ def e(n: int) -> E:
     return E(n)
 
 
-def expand_e(expr: Expr, expand_powers: bool = False) -> Expr:
+def expand_e(expr: Expr, expand_powers: bool = False, max_iterations: int = 10) -> Expr:
     """
     Expand powers of 'E' elements into explicit products using the noncommutative
     rules.
@@ -210,7 +207,6 @@ def expand_e(expr: Expr, expand_powers: bool = False) -> Expr:
 
     # If expand_powers is True, recursively expand any powers that were created
     if expand_powers:
-        max_iterations: int = 10
         for _ in range(max_iterations):
             if not _has_e_powers(result):
                 break
@@ -357,7 +353,6 @@ def intersect_uw_bases(
     Returns:
         List of intersection basis elements (may be empty if intersection is trivial)
     """
-    import numpy as np
 
     # Compute all expansions
     expansions: List[Expr] = []
@@ -369,7 +364,7 @@ def intersect_uw_bases(
 
     # Add UW2_basis[j] * g_2 for all j
     for basis_elem in UW2_basis:
-        expansion = expand_e(basis_elem * g_2)
+        expansion = expand_e(basis_elem * g_2)  # TODO maybe this needs to be minus (but the linalg is the same)
         expansions.append(expansion)
 
     # Extract all unique monomials (products of E elements) across all expansions
@@ -384,7 +379,7 @@ def intersect_uw_bases(
 
     # Build coefficient matrix
     # Rows: unique monomials
-    # Columns: expansions
+    # Columns: expansions e_k g_ij
     coefficient_matrix: List[List[int]] = []
 
     for monomial_key in monomial_keys:
@@ -422,8 +417,7 @@ def intersect_uw_bases(
         for j in range(len(UW1_basis)):
             coeff = vec_cleaned[j]
             if coeff != 0:
-                term = UW1_basis[j] * g_1
-                term = coeff * term
+                term = coeff * (UW1_basis[j] * g_1)
 
                 if intersection_elem is None:
                     intersection_elem = term
@@ -437,7 +431,7 @@ def intersect_uw_bases(
     return intersection_basis
 
 
-def _rationalize_vector(vec: "np.ndarray", max_denom: int = 1000) -> List[int]:
+def _rationalize_vector(vec: np.ndarray, max_denom: int = 1000) -> List[int]:
     """
     Convert a float vector to rational approximations, then scale to integers.
 
@@ -509,46 +503,6 @@ def _extract_monomials(expr: Expr) -> dict[Tuple[int, ...], int]:
 
     # Convert defaultdict to regular dict and remove zero coefficients
     return {k: v for k, v in monomials.items() if v != 0}
-
-
-def format_monomial(monomial_key: Tuple[int, ...]) -> str:
-    """
-    Format a monomial key as a readable string.
-
-    Args:
-        monomial_key: Tuple of sorted indices representing a monomial
-
-    Returns:
-        String representation like "e_1*e_2*e_3" or "1" for empty tuple
-
-    Example:
-        >>> format_monomial((1, 2, 3))
-        'e_1*e_2*e_3'
-        >>> format_monomial((2, 2))
-        'e_2**2'
-        >>> format_monomial(())
-        '1'
-    """
-    if not monomial_key:
-        return "1"
-
-    # Group consecutive identical indices to use power notation
-    result = []
-    i = 0
-    while i < len(monomial_key):
-        idx = monomial_key[i]
-        count = 1
-        while i + count < len(monomial_key) and monomial_key[i + count] == idx:
-            count += 1
-
-        if count == 1:
-            result.append(f"e_{idx}")
-        else:
-            result.append(f"e_{idx}**{count}")
-
-        i += count
-
-    return "*".join(result)
 
 
 def _extract_single_term(term: Expr) -> Tuple[Tuple[int, ...], int]:
@@ -776,33 +730,33 @@ if __name__ == "__main__":
     print()
 
 
-    print("=" * 60)
-    print("Another example: UW_basis(5)*g(2,2) and UW_basis(4)*g(2,3)")
-    print("=" * 60)
-    print()
+    # print("=" * 60)
+    # print("Another example: UW_basis(5)*g(2,2) and UW_basis(4)*g(2,3)")
+    # print("=" * 60)
+    # print()
 
-    print("UW_basis(4) expanded for every element:")
-    uw_4 = UW_basis(4)
-    for i, basis_elem in enumerate(uw_4):
-        print(f"  [{i}]: {basis_elem}")
-    print()
+    # print("UW_basis(4) expanded for every element:")
+    # uw_4 = UW_basis(4)
+    # for i, basis_elem in enumerate(uw_4):
+    #     print(f"  [{i}]: {basis_elem}")
+    # print()
 
-    print("UW_basis(5) expanded for every element:")
-    uw_5 = UW_basis(5)
-    for i, basis_elem in enumerate(uw_5):
-        print(f"  [{i}]: {basis_elem}")
-    print()
+    # print("UW_basis(5) expanded for every element:")
+    # uw_5 = UW_basis(5)
+    # for i, basis_elem in enumerate(uw_5):
+    #     print(f"  [{i}]: {basis_elem}")
+    # print()
 
-    intersection5 = intersect_uw_bases(UW_basis(5), g_22, UW_basis(4), g_23)
-    print(f"Dimension of intersection: {len(intersection5)}")
+    # intersection5 = intersect_uw_bases(UW_basis(5), g_22, UW_basis(4), g_23)
+    # print(f"Dimension of intersection: {len(intersection5)}")
 
-    if intersection5:
-        print("Intersection basis elements:")
-        for i, elem in enumerate(intersection5):
-            print(f"  [{i}]: {elem}")
-    else:
-        print("Intersection is trivial (contains only zero).")
-    print()
+    # if intersection5:
+    #     print("Intersection basis elements:")
+    #     for i, elem in enumerate(intersection5):
+    #         print(f"  [{i}]: {elem}")
+    # else:
+    #     print("Intersection is trivial (contains only zero).")
+    # print()
 
 
  # Test interaction between g and UW_basis
@@ -869,117 +823,117 @@ if __name__ == "__main__":
     #print(result)
     #print()
 
-    # Test intersect_uw_bases function
-    print("=" * 60)
-    print("Testing intersect_uw_bases function:")
-    print("=" * 60)
-    print()
+    # # Test intersect_uw_bases function
+    # print("=" * 60)
+    # print("Testing intersect_uw_bases function:")
+    # print("=" * 60)
+    # print()
 
-    print("Example: Intersection of UW_basis(6)*g(2,2) and UW_basis(5)*g(2,3)")
-    print()
-    uw_6 = UW_basis(6)
+    # print("Example: Intersection of UW_basis(6)*g(2,2) and UW_basis(5)*g(2,3)")
+    # print()
+    # uw_6 = UW_basis(6)
 
-    # Show the bases
-    print("UW_basis(6):", uw_6)
-    print("g(2,2):", g_22)
-    print()
-    print("UW_basis(5):", uw_5)
-    print("g(2,3):", g_23)
-    print()
+    # # Show the bases
+    # print("UW_basis(6):", uw_6)
+    # print("g(2,2):", g_22)
+    # print()
+    # print("UW_basis(5):", uw_5)
+    # print("g(2,3):", g_23)
+    # print()
 
-    # Show expansions for context
-    print("Expansions of UW_basis(6)[i] * g(2,2):")
-    for i, basis_elem in enumerate(uw_6):
-        expansion = expand_e(basis_elem * g_22)
-        print(f"  [{i}]: {expansion}")
-    print()
+    # # Show expansions for context
+    # print("Expansions of UW_basis(6)[i] * g(2,2):")
+    # for i, basis_elem in enumerate(uw_6):
+    #     expansion = expand_e(basis_elem * g_22)
+    #     print(f"  [{i}]: {expansion}")
+    # print()
 
-    print("Expansions of g(2,2) * UW_basis(5)[i]:")
-    for i, basis_elem in enumerate(uw_5):
-        expansion = expand_e(g_22 * basis_elem)
-        print(f"  [{i}]: {expansion}")
-    print()
+    # print("Expansions of g(2,2) * UW_basis(5)[i]:")
+    # for i, basis_elem in enumerate(uw_5):
+    #     expansion = expand_e(g_22 * basis_elem)
+    #     print(f"  [{i}]: {expansion}")
+    # print()
 
-    print("Expansions of  UW_basis(4)[i] * g(2,3):")
-    for i, basis_elem in enumerate(uw_4):
-        expansion = expand_e(basis_elem* g_23)
-        print(f"  [{i}]: {expansion}")
-    print()
+    # print("Expansions of  UW_basis(4)[i] * g(2,3):")
+    # for i, basis_elem in enumerate(uw_4):
+    #     expansion = expand_e(basis_elem* g_23)
+    #     print(f"  [{i}]: {expansion}")
+    # print()
 
-    print("Expansions of UW_basis(5)[j] * g(2,3):")
-    for j, basis_elem in enumerate(uw_5):
-        expansion = expand_e(basis_elem * g_23)
-        print(f"  [{j}]: {expansion}")
-    print()
+    # print("Expansions of UW_basis(5)[j] * g(2,3):")
+    # for j, basis_elem in enumerate(uw_5):
+    #     expansion = expand_e(basis_elem * g_23)
+    #     print(f"  [{j}]: {expansion}")
+    # print()
 
-    intersection = intersect_uw_bases(g_22,uw_6, uw_5, g_23)
+    # intersection = intersect_uw_bases(g_22,uw_6, uw_5, g_23)
 
-    print(f"Dimension of intersection: {len(intersection)}")
-    print()
-
-
-    # Compute intersection
-    intersection = intersect_uw_bases(uw_6, g_22, uw_5, g_23)
-
-    print(f"Dimension of intersection: {len(intersection)}")
-    print()
-
-    if intersection:
-        print("Intersection basis elements:")
-        for i, elem in enumerate(intersection):
-            print(f"  [{i}]: {elem}")
-    else:
-        print("Intersection is trivial (contains only zero).")
-    print()
+    # print(f"Dimension of intersection: {len(intersection)}")
+    # print()
 
 
-    intersection6 = intersect_uw_bases(UW_basis(6), g_22, UW_basis(5), g_23)
-    print(f"Dimension of intersection6: {len(intersection6)}")
+    # # Compute intersection
+    # intersection = intersect_uw_bases(uw_6, g_22, uw_5, g_23)
 
-    intersection7 = intersect_uw_bases(UW_basis(7), g_22, UW_basis(6), g_23)
-    print(f"Dimension of intersection7: {len(intersection7)}")
+    # print(f"Dimension of intersection: {len(intersection)}")
+    # print()
 
-    intersection8 = intersect_uw_bases(UW_basis(8), g_22, UW_basis(7), g_23)
-    print(f"Dimension of intersection8: {len(intersection8)}")
+    # if intersection:
+    #     print("Intersection basis elements:")
+    #     for i, elem in enumerate(intersection):
+    #         print(f"  [{i}]: {elem}")
+    # else:
+    #     print("Intersection is trivial (contains only zero).")
+    # print()
 
-    intersection9 = intersect_uw_bases(UW_basis(9), g_22, UW_basis(8), g_23)
-    print(f"Dimension of intersection9: {len(intersection9)}")
 
-    intersection10 = intersect_uw_bases(UW_basis(10), g_22, UW_basis(9), g_23)
-    print(f"Dimension of intersection10: {len(intersection10)}")
+    # intersection6 = intersect_uw_bases(UW_basis(6), g_22, UW_basis(5), g_23)
+    # print(f"Dimension of intersection6: {len(intersection6)}")
 
-    intersection11 = intersect_uw_bases(UW_basis(11), g_22, UW_basis(10), g_23)
-    print(f"Dimension of intersection11: {len(intersection11)}")
+    # intersection7 = intersect_uw_bases(UW_basis(7), g_22, UW_basis(6), g_23)
+    # print(f"Dimension of intersection7: {len(intersection7)}")
 
-    intersection12 = intersect_uw_bases(UW_basis(12), g_22, UW_basis(11), g_23)
-    print(f"Dimension of intersection12: {len(intersection12)}")
+    # intersection8 = intersect_uw_bases(UW_basis(8), g_22, UW_basis(7), g_23)
+    # print(f"Dimension of intersection8: {len(intersection8)}")
 
-    intersection13 = intersect_uw_bases(UW_basis(13), g_22, UW_basis(12), g_23)
-    print(f"Dimension of intersection13: {len(intersection13)}")
+    # intersection9 = intersect_uw_bases(UW_basis(9), g_22, UW_basis(8), g_23)
+    # print(f"Dimension of intersection9: {len(intersection9)}")
 
-    intersection14 = intersect_uw_bases(UW_basis(14), g_22, UW_basis(13), g_23)
-    print(f"Dimension of intersection14: {len(intersection14)}")
+    # intersection10 = intersect_uw_bases(UW_basis(10), g_22, UW_basis(9), g_23)
+    # print(f"Dimension of intersection10: {len(intersection10)}")
 
-    intersection15 = intersect_uw_bases(UW_basis(15), g_22, UW_basis(14), g_23)
-    print(f"Dimension of intersection15: {len(intersection15)}")
+    # intersection11 = intersect_uw_bases(UW_basis(11), g_22, UW_basis(10), g_23)
+    # print(f"Dimension of intersection11: {len(intersection11)}")
 
-    intersection16 = intersect_uw_bases(UW_basis(16), g_22, UW_basis(15), g_23)
-    print(f"Dimension of intersection16: {len(intersection16)}")
+    # intersection12 = intersect_uw_bases(UW_basis(12), g_22, UW_basis(11), g_23)
+    # print(f"Dimension of intersection12: {len(intersection12)}")
 
-    intersection17 = intersect_uw_bases(UW_basis(17), g_22, UW_basis(16), g_23)
-    print(f"The intersection is: {intersection17}")
+    # intersection13 = intersect_uw_bases(UW_basis(13), g_22, UW_basis(12), g_23)
+    # print(f"Dimension of intersection13: {len(intersection13)}")
 
-    intersection18 = intersect_uw_bases(UW_basis(18), g_22, UW_basis(17), g_23)
-    print(f"Dimension of intersection18: {len(intersection18)}")
+    # intersection14 = intersect_uw_bases(UW_basis(14), g_22, UW_basis(13), g_23)
+    # print(f"Dimension of intersection14: {len(intersection14)}")
 
-    intersection20 = intersect_uw_bases(UW_basis(20), g_22, UW_basis(19), g_23)
-    print(f"Dimension of intersection20: {len(intersection20)}")
+    # intersection15 = intersect_uw_bases(UW_basis(15), g_22, UW_basis(14), g_23)
+    # print(f"Dimension of intersection15: {len(intersection15)}")
 
-    intersection30 = intersect_uw_bases(UW_basis(30), g_22, UW_basis(29), g_23)
-    print(f"Dimension of intersection30: {len(intersection30)}")
+    # intersection16 = intersect_uw_bases(UW_basis(16), g_22, UW_basis(15), g_23)
+    # print(f"Dimension of intersection16: {len(intersection16)}")
 
-    intersection40 = intersect_uw_bases(UW_basis(40), g_22, UW_basis(39), g_23)
-    print(f"Dimension of intersection40: {len(intersection40)}")
+    # intersection17 = intersect_uw_bases(UW_basis(17), g_22, UW_basis(16), g_23)
+    # print(f"The intersection is: {intersection17}")
 
-    intersection50 = intersect_uw_bases(UW_basis(50), g_22, UW_basis(49), g_23)
-    print(f"Dimension of intersection50: {len(intersection50)}")
+    # intersection18 = intersect_uw_bases(UW_basis(18), g_22, UW_basis(17), g_23)
+    # print(f"Dimension of intersection18: {len(intersection18)}")
+
+    # intersection20 = intersect_uw_bases(UW_basis(20), g_22, UW_basis(19), g_23)
+    # print(f"Dimension of intersection20: {len(intersection20)}")
+
+    # intersection30 = intersect_uw_bases(UW_basis(30), g_22, UW_basis(29), g_23)
+    # print(f"Dimension of intersection30: {len(intersection30)}")
+
+    # intersection40 = intersect_uw_bases(UW_basis(40), g_22, UW_basis(39), g_23)
+    # print(f"Dimension of intersection40: {len(intersection40)}")
+
+    # intersection50 = intersect_uw_bases(UW_basis(50), g_22, UW_basis(49), g_23)
+    # print(f"Dimension of intersection50: {len(intersection50)}")
