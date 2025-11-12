@@ -37,9 +37,6 @@ class E(AtomicExpr):
         obj.index = int(index)
         return obj
 
-    def _hashable_content(self) -> Tuple[int]:
-        return (self.index,)
-
     def __lt__(self, other: Any) -> bool:  # TODO remove
         if isinstance(other, E):
             return self.index < other.index
@@ -50,6 +47,9 @@ class E(AtomicExpr):
             return self.index == other.index
         return False
 
+    def _hashable_content(self) -> Tuple[int]:
+        return (self.index,)
+    
     def __hash__(self) -> int:
         return hash((self.__class__.__name__, self.index))
 
@@ -67,12 +67,12 @@ class E(AtomicExpr):
 
 def multiply_e_elements(expr: Expr) -> Expr:
     """
-    Recursively apply the multiplication rule and expand the products.
+    Recursively apply the multiplication rule and expand the products until all elements are sorted.
 
     Rule: e_n * e_m = e_m * e_n + (m-n) * e_(n+m) when n > m
 
     Args:
-        expr: SymPy expression containing E elements.
+        expr: SymPy expression containing E elements (could be single E, a product, a sum etc).
 
     Returns:
         Normalized expression with E elements in increasing order.
@@ -183,7 +183,7 @@ def e(n: int) -> E:
     return E(n)
 
 
-def expand_e(expr: Expr, expand_powers: bool = False, max_iterations: int = 10) -> Expr:
+def expand_e(expr: Expr, expand_powers: bool = False, max_iterations: int = 10000) -> Expr:
     """
     Expand powers of 'E' elements into explicit products using the noncommutative
     rules.
@@ -314,7 +314,7 @@ def UW_basis(n: int) -> List[Expr]:
 
     Example:
         >>> UW_basis(3)
-        [e_3, e_1*e_2 - e_3, e_1**3]
+        [e_3, e_1*e_2, e_1**3]
     """
     res: List[Expr] = []
     for p in list(partitions(n))[::-1]:
@@ -829,30 +829,31 @@ if __name__ == "__main__":
     # print("=" * 60)
     # print()
 
-    # print("Example: Intersection of UW_basis(6)*g(2,2) and UW_basis(5)*g(2,3)")
-    # print()
-    # uw_6 = UW_basis(6)
+    print("Example: Intersection of UW_basis(6)*g(2,2) and UW_basis(5)*g(2,3)")
+    print()
+    uw_6 = UW_basis(6)
+    uw_5 = UW_basis(5)
 
     # # Show the bases
-    # print("UW_basis(6):", uw_6)
-    # print("g(2,2):", g_22)
-    # print()
-    # print("UW_basis(5):", uw_5)
-    # print("g(2,3):", g_23)
-    # print()
+    print("UW_basis(6):", uw_6)
+    print("g(2,2):", g_22)
+    print()
+    print("UW_basis(5):", uw_5)
+    print("g(2,3):", g_23)
+    print()
 
     # # Show expansions for context
-    # print("Expansions of UW_basis(6)[i] * g(2,2):")
-    # for i, basis_elem in enumerate(uw_6):
-    #     expansion = expand_e(basis_elem * g_22)
-    #     print(f"  [{i}]: {expansion}")
-    # print()
+    print("Expansions of UW_basis(6)[i] * g(2,2):")
+    for i, basis_elem in enumerate(uw_6):
+        expansion = expand_e(basis_elem * g_22)
+        print(f"  [{i}]: {expansion}")
+    print()
 
-    # print("Expansions of g(2,2) * UW_basis(5)[i]:")
-    # for i, basis_elem in enumerate(uw_5):
-    #     expansion = expand_e(g_22 * basis_elem)
-    #     print(f"  [{i}]: {expansion}")
-    # print()
+    print("Expansions of UW_basis(5)[i] * g(2,3):")
+    for i, basis_elem in enumerate(uw_5):
+        expansion = expand_e(g_22 * basis_elem)
+        print(f"  [{i}]: {expansion}")
+    print()
 
     # print("Expansions of  UW_basis(4)[i] * g(2,3):")
     # for i, basis_elem in enumerate(uw_4):
@@ -935,8 +936,11 @@ if __name__ == "__main__":
     #intersection40 = intersect_uw_bases(UW_basis(40), g_22, UW_basis(39), g_23)
     #print(f"Dimension of intersection40: {len(intersection40)}")
 
-    intersection58 = intersect_uw_bases(UW_basis(54), g_22, UW_basis(53), g_23)
-    print(f"Dimension of intersection50: {len(intersection58)}")
+    intersection30 = intersect_uw_bases(UW_basis(26), g_22, UW_basis(25), g_23)
+    print(f"Dimension of intersection30: {len(intersection30)}")
+
+    intersection40 = intersect_uw_bases(UW_basis(36), g_22, UW_basis(35), g_23)
+    print(f"Dimension of intersection30: {len(intersection40)}")
 
     #intersection180 = intersect_uw_bases(UW_basis(180), g_22, UW_basis(179), g_23)
     #print(f"Dimension of intersection180: {len(intersection180)}")
