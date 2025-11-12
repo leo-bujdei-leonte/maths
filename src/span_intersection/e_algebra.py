@@ -17,11 +17,9 @@ as e_n**2 or e_n*e_n. Powers of the same element don't simplify further.
 from typing import Tuple, List, Any, Iterator
 from sympy import Expr, Add, Mul, Pow, S
 from sympy.core.expr import AtomicExpr
-from functools import total_ordering
 import numpy as np
 
 
-@total_ordering
 class E(AtomicExpr):
     """
     Non-commutative basis element e_i with custom multiplication rule.
@@ -33,33 +31,35 @@ class E(AtomicExpr):
     index: int
 
     def __new__(cls, index: int) -> "E":
+        # instantiation
         obj: E = AtomicExpr.__new__(cls)
         obj.index = int(index)
         return obj
 
-    def __lt__(self, other: Any) -> bool:  # TODO remove
-        if isinstance(other, E):
-            return self.index < other.index
-        return NotImplemented  # type: ignore
-
     def __eq__(self, other: Any) -> bool:
+        # equality check
         if isinstance(other, E):
             return self.index == other.index
         return False
 
     def _hashable_content(self) -> Tuple[int]:
+        # sympy hash
         return (self.index,)
     
     def __hash__(self) -> int:
+        # dict hash
         return hash((self.__class__.__name__, self.index))
 
     def _latex(self, _printer: Any) -> str:
+        # for printing
         return f"e_{{{self.index}}}"
 
     def __repr__(self) -> str:
+        # for printing
         return f"e_{self.index}"
 
     def _sympystr(self, _printer: Any) -> str:
+        # for printing
         return f"e_{self.index}"
 
     __str__ = __repr__
@@ -89,16 +89,19 @@ def multiply_e_elements(expr: Expr) -> Expr:
         return expr
 
     if isinstance(expr, Mul):
-        # Extract coefficient and E elements
-        coeff: Expr = S.One
-        e_elements: List[E] = []
+        # Peform noncommutative multiplication at the first out-of-order index
 
+        coeff: Expr = S.One # scalar coefficient of the multiplication
+        e_elements: List[E] = [] # es to be multiplied together
+
+        # fill in e_elements
         for arg in expr.args:
             if isinstance(arg, E):
                 e_elements.append(arg)
             elif isinstance(arg, Mul):
-                # Handle nested Mul - shouldn't happen but just in case
-                return multiply_e_elements(expr.expand())
+                # Handle nested Mul - shouldn't happen
+                # return multiply_e_elements(expr.expand())
+                raise NotImplementedError()
             elif isinstance(arg, Add):
                 # Need to distribute
                 return multiply_e_elements(expr.expand())
@@ -109,7 +112,7 @@ def multiply_e_elements(expr: Expr) -> Expr:
                         e_elements.append(arg.base)
                 else:
                     raise NotImplementedError("Non-integer or negative powers of E are not supported")
-            else:
+            else: # scalar
                 coeff *= arg
 
         # If no E elements or only one, return as is
@@ -121,6 +124,7 @@ def multiply_e_elements(expr: Expr) -> Expr:
         # Check if E elements are in increasing order
         indices: List[int] = [e.index for e in e_elements]
         if indices == sorted(indices):
+            #returns an expression
             return coeff * Mul(*e_elements, evaluate=False)
 
         # Find first out-of-order pair
@@ -162,12 +166,8 @@ def multiply_e_elements(expr: Expr) -> Expr:
         result: Expr = multiply_e_elements(term1) + multiply_e_elements(term2)
         return result
 
-    # For other types, recursively process arguments if any
-    if hasattr(expr, 'args') and expr.args:
-        new_args: List[Expr] = [multiply_e_elements(arg) for arg in expr.args]
-        return expr.func(*new_args)
-
-    return expr
+    # unrecognised expression type
+    raise NotImplementedError
 
 
 def e(n: int) -> E:
@@ -181,41 +181,6 @@ def e(n: int) -> E:
         Basis element e_n
     """
     return E(n)
-
-
-def expand_e(expr: Expr, expand_powers: bool = False, max_iterations: int = 10000) -> Expr:
-    """
-    Expand powers of 'E' elements into explicit products using the noncommutative
-    rules.
-
-    Args:
-        expr: Expression to expand
-        expand_powers: If True, expand powers like e_1**2 into e_1*e_1
-
-    Returns:
-        Expanded and normalized expression
-    """
-    # First expand using SymPy's expand
-    expanded: Expr = expr.expand()
-
-    # Optionally expand powers before processing
-    if expand_powers:
-        expanded = _expand_e_powers(expanded)
-
-    # Then apply our custom multiplication rules
-    result: Expr = multiply_e_elements(expanded)
-
-    # If expand_powers is True, recursively expand any powers that were created
-    if expand_powers:
-        for _ in range(max_iterations):
-            if not _has_e_powers(result):
-                break
-            result = _expand_e_powers(result)
-            expanded_result: Expr = result.expand() if hasattr(result, 'expand') else result
-            result = multiply_e_elements(expanded_result)
-
-    # Expand again to collect terms
-    return result.expand() if hasattr(result, 'expand') else result
 
 
 def _has_e_powers(expr: Expr) -> bool:
@@ -235,31 +200,6 @@ def _has_e_powers(expr: Expr) -> bool:
     return False
 
 
-def _expand_e_powers(expr: Expr) -> Expr:
-    """
-    Expand powers of E elements into explicit products.
-
-    Args:
-        expr: Expression to expand
-
-    Returns:
-        Expression with powers expanded
-    """
-    if isinstance(expr, E):
-        return expr
-    elif isinstance(expr, Pow) and isinstance(expr.base, E):
-        if expr.exp.is_Integer and expr.exp > 0:
-            result: Expr = expr.base
-            for _ in range(int(expr.exp) - 1):
-                result = result * expr.base
-            return result
-        return expr
-    elif hasattr(expr, 'args') and expr.args:
-        new_args: List[Expr] = [_expand_e_powers(arg) for arg in expr.args]
-        return expr.func(*new_args)
-    return expr
-
-
 def g(n: int, m: int) -> Expr:
     """
     Construct the elements g(n, m) defined as:
@@ -273,7 +213,7 @@ def g(n: int, m: int) -> Expr:
     Returns:
         Expanded expression for g(n, m)
     """
-    return expand_e(e(n) * e(m) - e(1) * e(n + m - 1) + (e(n + m) * (n - 1)))
+    return (e(n) * e(m) - e(1) * e(n + m - 1) + (e(n + m) * (n - 1))).expand()
 
 
 def partitions(n: int, I: int = 1) -> Iterator[Tuple[int, ...]]:
@@ -322,7 +262,7 @@ def UW_basis(n: int) -> List[Expr]:
         product: Expr = S.One
         for idx in p:
             product = product * e(idx)
-        res.append(expand_e(product))
+        res.append(product.expand())
     return res
 
 
@@ -359,13 +299,13 @@ def intersect_uw_bases(
 
     # Add UW1_basis[i] * g_1 for all i
     for basis_elem in UW1_basis:
-        expansion = expand_e(basis_elem * g_1)
-        expansions.append(expansion)
+        expansion = basis_elem * g_1
+        expansions.append(expansion.expand())
 
     # Add UW2_basis[j] * g_2 for all j
     for basis_elem in UW2_basis:
-        expansion = expand_e(basis_elem * g_2)  # TODO maybe this needs to be minus (but the linalg is the same)
-        expansions.append(expansion)
+        expansion = basis_elem * g_2  # TODO maybe this needs to be minus (but the linalg is the same)
+        expansions.append(expansion.expand())
 
     # Extract all unique monomials (products of E elements) across all expansions
     all_monomials: set[Tuple[int, ...]] = set()
@@ -385,8 +325,8 @@ def intersect_uw_bases(
     for monomial_key in monomial_keys:
         row: List[int] = []
         for expansion in expansions:
-            monomials = _extract_monomials(expansion)
-            coeff = monomials.get(monomial_key, 0)
+            monomials = _extract_monomials(expansion) # TODO can be saved from the previous loop
+            coeff = monomials.get(monomial_key, 0) # same as monomials[monomial_key] if monomial_key in monomials else 0
             row.append(coeff)
         coefficient_matrix.append(row)
 
@@ -425,7 +365,7 @@ def intersect_uw_bases(
                     intersection_elem = intersection_elem + term
 
         if intersection_elem is not None:
-            intersection_elem = expand_e(intersection_elem)
+            intersection_elem = intersection_elem.expand()
             intersection_basis.append(intersection_elem)
 
     return intersection_basis
@@ -501,7 +441,7 @@ def _extract_monomials(expr: Expr) -> dict[Tuple[int, ...], int]:
         monomial_key, coeff = _extract_single_term(expr)
         monomials[monomial_key] += coeff
 
-    # Convert defaultdict to regular dict and remove zero coefficients
+    # Convert defaultdict to regular dict and remove zero coefficients (dictionary comprehension)
     return {k: v for k, v in monomials.items() if v != 0}
 
 
@@ -516,6 +456,7 @@ def _extract_single_term(term: Expr) -> Tuple[Tuple[int, ...], int]:
         Tuple of (monomial_key, coefficient) where monomial_key is a sorted
         tuple of indices
     """
+
     if isinstance(term, E):
         # Single E element: e_i
         return ((term.index,), 1)
@@ -538,7 +479,7 @@ def _extract_single_term(term: Expr) -> Tuple[Tuple[int, ...], int]:
                 # Nested structure - shouldn't happen with normalized expressions
                 pass
 
-        monomial_key = tuple(sorted(indices))
+        monomial_key = tuple(sorted(indices)) # we will hash these - so we want them to map to the same key
         return (monomial_key, coeff)
 
     elif isinstance(term, Pow) and isinstance(term.base, E):
@@ -705,13 +646,13 @@ if __name__ == "__main__":
     # Show expansions for context
     print("Expansions of UW_basis(3)[i] * g(2,2):")
     for i, basis_elem in enumerate(uw_3):
-        expansion = expand_e(basis_elem * g_22)
+        expansion = (basis_elem * g_22).expand()
         print(f"  [{i}]: {expansion}")
     print()
 
     print("Expansions of UW_basis(2)[j] * g(2,3):")
     for j, basis_elem in enumerate(uw_2):
-        expansion = expand_e(basis_elem * g_23)
+        expansion = (basis_elem * g_23).expand()
         print(f"  [{j}]: {expansion}")
     print()
 
@@ -845,13 +786,13 @@ if __name__ == "__main__":
     # # Show expansions for context
     print("Expansions of UW_basis(6)[i] * g(2,2):")
     for i, basis_elem in enumerate(uw_6):
-        expansion = expand_e(basis_elem * g_22)
+        expansion = (basis_elem * g_22).expand()
         print(f"  [{i}]: {expansion}")
     print()
 
     print("Expansions of UW_basis(5)[i] * g(2,3):")
     for i, basis_elem in enumerate(uw_5):
-        expansion = expand_e(g_22 * basis_elem)
+        expansion = (g_22 * basis_elem).expand()
         print(f"  [{i}]: {expansion}")
     print()
 
@@ -888,8 +829,8 @@ if __name__ == "__main__":
     # print()
 
 
-    # intersection6 = intersect_uw_bases(UW_basis(6), g_22, UW_basis(5), g_23)
-    # print(f"Dimension of intersection6: {len(intersection6)}")
+    intersection6 = intersect_uw_bases(UW_basis(6), g_22, UW_basis(5), g_23)
+    print(f"Dimension of intersection6: {len(intersection6)}")
 
     # intersection7 = intersect_uw_bases(UW_basis(7), g_22, UW_basis(6), g_23)
     # print(f"Dimension of intersection7: {len(intersection7)}")
@@ -936,11 +877,11 @@ if __name__ == "__main__":
     #intersection40 = intersect_uw_bases(UW_basis(40), g_22, UW_basis(39), g_23)
     #print(f"Dimension of intersection40: {len(intersection40)}")
 
-    intersection30 = intersect_uw_bases(UW_basis(26), g_22, UW_basis(25), g_23)
-    print(f"Dimension of intersection30: {len(intersection30)}")
+    #intersection30 = intersect_uw_bases(UW_basis(26), g_22, UW_basis(25), g_23)
+    #print(f"Dimension of intersection30: {len(intersection30)}")
 
-    intersection40 = intersect_uw_bases(UW_basis(36), g_22, UW_basis(35), g_23)
-    print(f"Dimension of intersection30: {len(intersection40)}")
+    #intersection40 = intersect_uw_bases(UW_basis(36), g_22, UW_basis(35), g_23)
+    #print(f"Dimension of intersection30: {len(intersection40)}")
 
     #intersection180 = intersect_uw_bases(UW_basis(180), g_22, UW_basis(179), g_23)
     #print(f"Dimension of intersection180: {len(intersection180)}")
