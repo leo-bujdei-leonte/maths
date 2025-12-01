@@ -14,11 +14,12 @@ Note: When m = n (same index), the rule doesn't apply, so e_n * e_n remains
 as e_n**2 or e_n*e_n. Powers of the same element don't simplify further.
 """
 
-from typing import Tuple, List, Any, Iterator
+from typing import Tuple, List, Any, Iterator, Optional
 from sympy import Expr, Add, Mul, Pow, S
 from sympy.core.expr import AtomicExpr
 import numpy as np
-from tqdm import tqdm as tqdm
+import math
+from tqdm import tqdm
 
 class E(AtomicExpr):
     """
@@ -261,7 +262,7 @@ def UW_basis(n: int) -> List[Expr]:
         [e_3, e_1*e_2, e_1**3]
     """
     res: List[Expr] = []
-    for p in  tqdm(list(partitions(n))[::-1], desc=f"Constructing UW_{n}-basis"):
+    for p in tqdm(list(partitions(n))[::-1], desc=f"Constructing UW_{n}-basis"):
         # Create product of e elements for this partition
         product: Expr = S.One
         for idx in p:
@@ -269,14 +270,192 @@ def UW_basis(n: int) -> List[Expr]:
         res.append(expand_e(product))
     return res
 
+def egcd(a: int, b: int) -> Tuple[int, int, int]:
+    if b == 0:
+        return (a, 1, 0)
+    g, x1, y1 = egcd(b, a % b)
+    return (g, y1, x1 - (a // b) * y1)
+
+def inv_mod(a: int, p: int) -> int:
+    a %= p
+    g, x, _ = egcd(a, p)
+    if g != 1:
+        raise ZeroDivisionError(f"No inverse for {a} modulo {p}")
+    return x % p
+
+def crt_pair(a1: int, m1: int, a2: int, m2: int) -> Tuple[int, int]:
+    g, s, t = egcd(m1, m2)
+    if (a2 - a1) % g != 0:
+        raise ValueError("No CRT solution")
+    l = m1 // g * m2
+    diff = (a2 - a1) // g
+    x = (a1 + (m1 * ((diff * s) % (m2 // g)))) % l
+    return (x, l)
+
+def row_reduce_mod_p_dense(A: np.ndarray, p: int) -> Tuple[np.ndarray, List[int]]:
+    A = A.copy() % p
+    nrows, ncols = A.shape
+    pivots = []
+    r = 0
+    for c in range(ncols):
+        if r >= nrows:
+            break
+        pivot_row = None
+        for i in range(r, nrows):
+            if A[i, c] % p != 0:
+                pivot_row = i
+                break
+        if pivot_row is None:
+            continue
+        if pivot_row != r:
+            A[[pivot_row, r], :] = A[[r, pivot_row], :]
+        inv = inv_mod(int(A[r, c]), p)
+        A[r, :] = (A[r, :] * inv) % p
+        for i in range(nrows):
+            if i != r and A[i, c] % p != 0:
+                factor = int(A[i, c])
+                A[i, :] = (A[i, :] - factor * A[r, :]) % p
+        pivots.append(c)
+        r += 1
+    return A, pivots
+
+def _nullspace_from_reduced_dense(A_red: np.ndarray, pivots: List[int], p: int) -> np.ndarray:
+    nrows, ncols = A_red.shape
+    pivot_set = set(pivots)
+    free_vars = [j for j in range(ncols) if j not in pivot_set]
+    d = len(free_vars)
+    if d == 0:
+        return np.zeros((ncols, 0), dtype=int)
+    basis = np.zeros((ncols, d), dtype=int)
+    for idx, fv in enumerate(free_vars):
+        vec = np.zeros(ncols, dtype=int)
+        vec[fv] = 1
+        for r, pivcol in enumerate(pivots):
+            val = int(A_red[r, fv]) % p
+            if val != 0:
+                vec[pivcol] = (-val) % p
+        basis[:, idx] = vec % p
+    return basis
+
+def nullspace_mod_p(A: np.ndarray, p: int) -> np.ndarray:
+    A_copy = np.array(A, dtype=int) % p
+    A_red, pivots = row_reduce_mod_p_dense(A_copy, p)
+    return _nullspace_from_reduced_dense(A_red, pivots, p)
+
+def combine_vectors_crt(vecs_mod: List[np.ndarray], primes: List[int], bound: Optional[int] = None) -> List[np.ndarray]:
+    assert len(vecs_mod) == len(primes)
+    k = len(primes)
+    ncols, d = vecs_mod[0].shape
+    # initialize with first prime
+    cur_mod = primes[0]
+    cur = np.array(vecs_mod[0], dtype=object).copy()
+    for t in range(1, k):
+        p = primes[t]
+        v = np.array(vecs_mod[t], dtype=object)
+        for i in range(ncols):
+            for j in range(d):
+                a1 = int(cur[i,j])
+                a2 = int(v[i,j])
+                x, m = crt_pair(a1, cur_mod, a2, p)
+                cur[i,j] = x
+        cur_mod = cur_mod * p
+    M = cur_mod
+    int_result = []
+    for j in range(d):
+        col = np.array([int(cur[i,j]) for i in range(ncols)], dtype=object)
+        if bound is not None:
+            half = M // 2
+            col = np.array([int(x - M) if x > half else int(x) for x in col], dtype=int)
+        else:
+            col = np.array([int(x) for x in col], dtype=int)
+        int_result.append(col)
+    return [np.array(col, dtype=int) for col in int_result]
+
+def modular_nullspace(
+    C: np.ndarray,
+    primes_to_try: int = 6,
+    prime_start: int = 200000003,
+    verify: bool = True
+) -> List[np.ndarray]:
+    # pick small list of primes (quick primality test)
+    def is_prime_simple(q: int) -> bool:
+        if q < 2:
+            return False
+        if q % 2 == 0:
+            return q == 2
+        r = int(math.isqrt(q))
+        for t in range(3, min(r+1, 1000), 2):
+            if q % t == 0:
+                return False
+        return True
+
+    primes: List[int] = []
+    p = prime_start
+    while len(primes) < primes_to_try:
+        while not is_prime_simple(p):
+            p += 2
+        primes.append(p)
+        p += 2
+
+    modular_bases: List[np.ndarray] = []
+    dims: List[int] = []
+    for idx, prime in enumerate(primes):
+        print(f"[modular_nullspace] prime {idx+1}/{len(primes)} = {prime}")
+        try:
+            basis_mod = nullspace_mod_p(C, prime)
+        except Exception as e:
+            print("  failed on prime", prime, ":", e)
+            basis_mod = np.zeros((C.shape[1], 0), dtype=int)
+        modular_bases.append(basis_mod)
+        dims.append(basis_mod.shape[1])
+        print("  dim mod p =", basis_mod.shape[1])
+
+    # pick the stable dimension (mode)
+    if not dims:
+        return []
+    stable_dim = max(set(dims), key=dims.count)
+    if stable_dim == 0:
+        print("[modular_nullspace] trivial nullspace")
+        return []
+
+    good_idxs = [i for i, d in enumerate(dims) if d == stable_dim]
+    if not good_idxs:
+        raise RuntimeError("No consistent nullspace dimension across primes; increase primes_to_try.")
+
+    use_idxs = good_idxs[:max(2, len(good_idxs))]
+    primes_used = [primes[i] for i in use_idxs]
+    vecs_used = [modular_bases[i] for i in use_idxs]
+
+    # combine via CRT
+    combined_cols = combine_vectors_crt(vecs_used, primes_used)
+
+    int_basis: List[np.ndarray] = []
+    for col in combined_cols:
+        # reduce gcd
+        g = 0
+        for x in col:
+            g = math.gcd(g, abs(int(x)))
+        if g > 1:
+            col = (col // g).astype(int)
+        if verify:
+            res = (C.astype(object) @ col.astype(object))
+            if not np.all(np.array(res, dtype=int) == 0):
+                raise RuntimeError("Verification failed: reconstructed integer vector not in nullspace. Try more primes.")
+        int_basis.append(col.astype(int))
+    return int_basis
+
+
+
 
 def intersect_uw_bases(
     UW1_basis: List[Expr],
     g_1: Expr,
     UW2_basis: List[Expr],
     g_2: Expr,
-    return_matrix: bool = False
+    primes_to_try: int =8,
+    prime_start: int =200000003
 ) -> List[Expr]:
+
     """
     Compute the intersection of the two U(W_+) subspaces multiplies by their respective g elements.
     
@@ -314,9 +493,11 @@ def intersect_uw_bases(
 
     # Extract all unique monomials (products of E elements) across all expansions
     all_monomials: set[Tuple[int, ...]] = set()
+    monomial_maps: List[dict[Tuple[int,...], int]] = []
 
-    for expansion in tqdm(expansions,desc = "Expansions"):
+    for expansion in tqdm(expansions, desc="Expansions" ):
         monomials = _extract_monomials(expansion)
+        monomial_maps.append(monomials)
         all_monomials.update(monomials.keys())
 
     # Sort monomials for consistent ordering
@@ -326,102 +507,54 @@ def intersect_uw_bases(
     # Rows: unique monomials
     # Columns: expansions e_k g_ij
     coefficient_matrix: List[List[int]] = []
-    zero_count = 0
-    total_count = 0
-    for monomial_key in tqdm(monomial_keys, desc = "Constructing matrix"):
+
+    for monomial_key in tqdm(monomial_keys, desc="Constructing matrix..."):
         row: List[int] = []
         for expansion in expansions:
             monomials = _extract_monomials(expansion) # TODO can be saved from the previous loop
             coeff = monomials.get(monomial_key, 0) # same as monomials[monomial_key] if monomial_key in monomials else 0
             row.append(coeff)
-            total_count += 1
-            if coeff == 0:
-                zero_count += 1
         coefficient_matrix.append(row)
 
-    if return_matrix:
-        return coefficient_matrix
-
     # Convert to numpy array and find null space
-    C = np.array(coefficient_matrix, dtype=float)
+    C = np.array(coefficient_matrix, dtype=int)
 
     # Use SVD to find null space
     if C.size == 0:
         return []
+    
 
-    _U, s, Vt = np.linalg.svd(C, full_matrices=True)
-    rank = np.sum(s > 1e-10)
-    null_space = Vt[rank:].T
+    null_basis = modular_nullspace(C, primes_to_try=primes_to_try, prime_start=prime_start)
 
     # Build intersection basis elements from null space vectors
     intersection_basis: List[Expr] = []
 
-    for i in range(null_space.shape[1]):
-        vec = null_space[:, i]
+    if not null_basis:
+        return []
 
-        # Round to clean up numerical errors and find rational approximations
-        # Use a tolerance to determine which coefficients are effectively zero
-        vec_cleaned = _rationalize_vector(vec)
+    n1 = len(UW1_basis)
+    n2 = len(UW2_basis)
+    total = n1 + n2
 
-        # Construct intersection element from first part (UW1_basis coefficients)
-        intersection_elem: Expr | None = None
-
-        for j in range(len(UW1_basis)):
-            coeff = vec_cleaned[j]
-            if coeff != 0:
-                term = coeff * (UW1_basis[j] * g_1)
-
-                if intersection_elem is None:
-                    intersection_elem = term
-                else:
-                    intersection_elem = intersection_elem + term
+    for vec in null_basis:
+        intersection_elem: Optional[Expr] = None
+        for j in range(n1):
+            coeff = int(vec[j])
+            if coeff == 0:
+                continue
+            term = coeff * (UW1_basis[j]* g_1)
+            if intersection_elem is None:
+                intersection_elem = term
+            else:
+                intersection_elem = intersection_elem + term
 
         if intersection_elem is not None:
             intersection_elem = expand_e(intersection_elem)
             intersection_basis.append(intersection_elem)
+       
 
     return intersection_basis
 
-
-def _rationalize_vector(vec: np.ndarray, max_denom: int = 1000) -> List[int]:
-    """
-    Convert a float vector to rational approximations, then scale to integers.
-
-    Args:
-        vec: Input vector with float values
-        max_denom: Maximum denominator for rational approximation
-
-    Returns:
-        List of integer values (scaled and GCD-reduced)
-    """
-    from fractions import Fraction
-    from math import gcd
-    from functools import reduce
-
-    # Convert to fractions
-    fracs: List[Fraction] = []
-    for val in vec:
-        if abs(val) < 1e-10:
-            fracs.append(Fraction(0))
-        else:
-            fracs.append(Fraction(val).limit_denominator(max_denom))
-
-    # Find LCM of all denominators
-    denominators = [f.denominator for f in fracs if f != 0]
-    if not denominators:
-        return [0] * len(vec)
-
-    lcm = reduce(lambda a, b: a * b // gcd(a, b), denominators, 1)
-
-    # Scale to integers
-    int_vec = [int(f * lcm) for f in fracs]
-
-    # Reduce by GCD
-    vec_gcd = reduce(gcd, (abs(x) for x in int_vec if x != 0), 0)
-    if vec_gcd > 0:
-        int_vec = [x // vec_gcd for x in int_vec]
-
-    return int_vec
 
 
 def _extract_monomials(expr: Expr) -> dict[Tuple[int, ...], int]:
@@ -624,41 +757,35 @@ if __name__ == "__main__":
     print()
 
     # # Show expansions for context
-    #print("Expansions of UW_basis(6)[i] * g(2,2):")
-    #for i, basis_elem in enumerate(uw_6):
-    #    expansion = expand_e(basis_elem * g_22)
-    #    print(f"  [{i}]: {expansion}")
-    #print()
+    print("Expansions of UW_basis(6)[i] * g(2,2):")
+    for i, basis_elem in enumerate(uw_6):
+        expansion = expand_e(basis_elem * g_22)
+        print(f"  [{i}]: {expansion}")
+    print()
 
-    #print("Expansions of UW_basis(5)[i] * g(2,3):")
-    #for i, basis_elem in enumerate(uw_5):
-    #    expansion = expand_e(g_22 * basis_elem)
-    #    print(f"  [{i}]: {expansion}")
-    #print()
+    print("Expansions of UW_basis(5)[i] * g(2,3):")
+    for i, basis_elem in enumerate(uw_5):
+        expansion = expand_e(g_22 * basis_elem)
+        print(f"  [{i}]: {expansion}")
+    print()
  
 
     #intersection30 = intersect_uw_bases(UW_basis(26), g_22, UW_basis(25), g_23)
     #print(f"Dimension of intersection30: {len(intersection30)}")
 
-    print("Sparcity coefficient")
-#print("n\aapproximate_p(n-4) + approximate_p(n-5) - approximate_p(n))\approximate_p(n-4) + approximate_p(n-5) - approximate_p(n)-(approximate_p(n-5) + approximate_p(n-6) - approximate_p(n-1)")
-print("-" * 50)
 
-for n in range(1, 35):
+    #intersection35 = intersect_uw_bases(UW_basis(31), g_22, UW_basis(30), g_23)
+    #print(f"Dimension of intersection30: {len(intersection35)}")
 
-    UW1 = UW_basis(n)
-    UW2 = UW_basis(n - 1)
+    #print("e(3) * e(1):")
+    #result = expand_e(e(3) * e(1))
+    #print(result)
 
-    # get the coefficient matrix instead of the intersection
-    M = intersect_uw_bases(
-        UW1, g(2,2),
-        UW2, g(2,3),
-        return_matrix= True
-    )
+    intersection25 = intersect_uw_bases(UW_basis(21), g_22, UW_basis(20), g_23)
+    print(f"Dimension of intersection25: {len(intersection25)}")
 
-    M = np.array(M)
-    zeros=np.count_nonzero(M == 0)
-    total = M.size
-    sparsity = zeros / total
+    #intersection40 = intersect_uw_bases(UW_basis(40), g_22, UW_basis(39), g_23)
+    #print(f"Dimension of intersection20: {len(intersection40)}")
 
-    print(f"{n}\t{M.shape}\t{M.size}\t{zeros}\t{sparsity:.4f}")
+    #intersection30 = intersect_uw_bases(UW_basis(30), g_22, UW_basis(29), g_23)
+    #print(f"Dimension of intersection20: {len(intersection30)}")

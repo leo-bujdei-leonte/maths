@@ -14,11 +14,15 @@ Note: When m = n (same index), the rule doesn't apply, so e_n * e_n remains
 as e_n**2 or e_n*e_n. Powers of the same element don't simplify further.
 """
 
-from typing import Tuple, List, Any, Iterator
+from typing import Tuple, List, Any, Iterator, Optional
 from sympy import Expr, Add, Mul, Pow, S
 from sympy.core.expr import AtomicExpr
 import numpy as np
-from tqdm import tqdm as tqdm
+import math
+from tqdm import tqdm
+from scipy.sparse.linalg import spsolve
+import scipy.sparse as sp
+
 
 class E(AtomicExpr):
     """
@@ -261,7 +265,7 @@ def UW_basis(n: int) -> List[Expr]:
         [e_3, e_1*e_2, e_1**3]
     """
     res: List[Expr] = []
-    for p in  tqdm(list(partitions(n))[::-1], desc=f"Constructing UW_{n}-basis"):
+    for p in tqdm(list(partitions(n))[::-1], desc=f"Constructing UW_{n}-basis"):
         # Create product of e elements for this partition
         product: Expr = S.One
         for idx in p:
@@ -269,14 +273,93 @@ def UW_basis(n: int) -> List[Expr]:
         res.append(expand_e(product))
     return res
 
+def nullspace_spsolve(A, tol=1e-12) -> np.ndarray:
+    """
+    Compute a numerical nullspace basis of sparse matrix A using spsolve.
+    """
+    if spsolve is None or sp is None:
+        raise RuntimeError("scipy is required for nullspace_spsolve. Please install scipy (pip install scipy).")
+
+    # Convert to sparse CSR for efficient column slicing & matvec
+    A_sparse = sp.csr_matrix(A.astype(float))
+    m, n = A_sparse.shape
+
+    found = []
+    # Try each column as a free variable
+    for free_col in range(n):
+        # select columns excluding free_col
+        cols = [j for j in range(n) if j != free_col]
+        if not cols:
+            continue
+        A_red = A_sparse[:, cols].tocsc()  # use CSC for spsolve / sparse solve
+        b = -A_sparse[:, free_col].toarray().ravel()
+
+        # skip trivial zero RHS
+        try:
+            x = spsolve(A_red, b)
+        except Exception:
+            continue
+
+        # Build full vector
+        full = np.zeros(n, dtype=float)
+        full[cols] = np.array(x, dtype=float).ravel()
+        full[free_col] = 1.0
+
+        # Check residual
+        resid = A_sparse.dot(full)
+        resid_norm = np.linalg.norm(resid)
+    
+
+        # Normalize to avoid duplicates scaled differently
+        # We'll normalize such that max absolute entry = 1 (preserve sparsity/sign)
+        mx = np.max(np.abs(full))
+        if mx == 0:
+            continue
+        full_normed = full / mx
+
+        # Check near-duplicates
+        is_dup = False
+        for v in found:
+            if np.linalg.norm(v - full_normed) < 1e-8 or np.linalg.norm(v + full_normed) < 1e-8:
+                is_dup = True
+                break
+        if not is_dup:
+            found.append(full_normed)
+
+    if not found:
+        return np.zeros((A.shape[1], 0), dtype=float)
+
+    # Stack columns and orthonormalize via QR to remove linear dependencies numerically
+    M = np.column_stack(found)
+    try:
+        Q, R = np.linalg.qr(M)
+    except Exception:
+        # fallback: return raw found vectors
+        return M
+
+    # Determine effective rank from R
+    diag = np.abs(np.diag(R))
+    rank = np.sum(diag > tol)
+    if rank == 0:
+        return np.zeros((A.shape[1], 0), dtype=float)
+
+    # Take last (k) columns of Q corresponding to nullspace basis (numerical)
+    k = Q.shape[1] - rank
+    if k <= 0:
+        # The found vectors are independent but QR says no null dimension left (rare) — return M
+        return M
+
+    # Use columns of Q[:, rank:] as independent null vectors
+    basis = Q[:, rank:]
+    return basis
 
 def intersect_uw_bases(
     UW1_basis: List[Expr],
     g_1: Expr,
     UW2_basis: List[Expr],
     g_2: Expr,
-    return_matrix: bool = False
 ) -> List[Expr]:
+
     """
     Compute the intersection of the two U(W_+) subspaces multiplies by their respective g elements.
     
@@ -314,9 +397,11 @@ def intersect_uw_bases(
 
     # Extract all unique monomials (products of E elements) across all expansions
     all_monomials: set[Tuple[int, ...]] = set()
+    monomial_maps: List[dict[Tuple[int,...], int]] = []
 
-    for expansion in tqdm(expansions,desc = "Expansions"):
+    for expansion in tqdm(expansions, desc="Expansions" ):
         monomials = _extract_monomials(expansion)
+        monomial_maps.append(monomials)
         all_monomials.update(monomials.keys())
 
     # Sort monomials for consistent ordering
@@ -326,55 +411,43 @@ def intersect_uw_bases(
     # Rows: unique monomials
     # Columns: expansions e_k g_ij
     coefficient_matrix: List[List[int]] = []
-    zero_count = 0
-    total_count = 0
-    for monomial_key in tqdm(monomial_keys, desc = "Constructing matrix"):
+
+    for monomial_key in tqdm(monomial_keys, desc="Constructing matrix..."):
         row: List[int] = []
         for expansion in expansions:
             monomials = _extract_monomials(expansion) # TODO can be saved from the previous loop
             coeff = monomials.get(monomial_key, 0) # same as monomials[monomial_key] if monomial_key in monomials else 0
             row.append(coeff)
-            total_count += 1
-            if coeff == 0:
-                zero_count += 1
         coefficient_matrix.append(row)
 
-    if return_matrix:
-        return coefficient_matrix
-
     # Convert to numpy array and find null space
-    C = np.array(coefficient_matrix, dtype=float)
+    C = np.array(coefficient_matrix, dtype=int)
 
     # Use SVD to find null space
     if C.size == 0:
         return []
-
-    _U, s, Vt = np.linalg.svd(C, full_matrices=True)
-    rank = np.sum(s > 1e-10)
-    null_space = Vt[rank:].T
-
-    # Build intersection basis elements from null space vectors
+    
+    null_space = nullspace_spsolve(C)
     intersection_basis: List[Expr] = []
 
+    if null_space.size == 0:
+        return []
+    
     for i in range(null_space.shape[1]):
-        vec = null_space[:, i]
+        vec = null_space[:,i]
 
-        # Round to clean up numerical errors and find rational approximations
-        # Use a tolerance to determine which coefficients are effectively zero
-        vec_cleaned = _rationalize_vector(vec)
+    vec_cleaned = _rationalize_vector(vec)
+    intersection_elem: Optional[Expr] = None
 
-        # Construct intersection element from first part (UW1_basis coefficients)
-        intersection_elem: Expr | None = None
+    for j in range(len(UW1_basis)):
+        coeff = vec_cleaned[j]
+        if coeff != 0:
+            term = coeff * (UW1_basis[j] * g_1)
 
-        for j in range(len(UW1_basis)):
-            coeff = vec_cleaned[j]
-            if coeff != 0:
-                term = coeff * (UW1_basis[j] * g_1)
-
-                if intersection_elem is None:
-                    intersection_elem = term
-                else:
-                    intersection_elem = intersection_elem + term
+            if intersection_elem is None:
+                intersection_elem = term
+            else:
+                intersection_elem = intersection_elem + term
 
         if intersection_elem is not None:
             intersection_elem = expand_e(intersection_elem)
@@ -624,41 +697,35 @@ if __name__ == "__main__":
     print()
 
     # # Show expansions for context
-    #print("Expansions of UW_basis(6)[i] * g(2,2):")
-    #for i, basis_elem in enumerate(uw_6):
-    #    expansion = expand_e(basis_elem * g_22)
-    #    print(f"  [{i}]: {expansion}")
-    #print()
+    print("Expansions of UW_basis(6)[i] * g(2,2):")
+    for i, basis_elem in enumerate(uw_6):
+        expansion = expand_e(basis_elem * g_22)
+        print(f"  [{i}]: {expansion}")
+    print()
 
-    #print("Expansions of UW_basis(5)[i] * g(2,3):")
-    #for i, basis_elem in enumerate(uw_5):
-    #    expansion = expand_e(g_22 * basis_elem)
-    #    print(f"  [{i}]: {expansion}")
-    #print()
+    print("Expansions of UW_basis(5)[i] * g(2,3):")
+    for i, basis_elem in enumerate(uw_5):
+        expansion = expand_e(g_22 * basis_elem)
+        print(f"  [{i}]: {expansion}")
+    print()
  
 
     #intersection30 = intersect_uw_bases(UW_basis(26), g_22, UW_basis(25), g_23)
     #print(f"Dimension of intersection30: {len(intersection30)}")
 
-    print("Sparcity coefficient")
-#print("n\aapproximate_p(n-4) + approximate_p(n-5) - approximate_p(n))\approximate_p(n-4) + approximate_p(n-5) - approximate_p(n)-(approximate_p(n-5) + approximate_p(n-6) - approximate_p(n-1)")
-print("-" * 50)
 
-for n in range(1, 35):
+    #intersection35 = intersect_uw_bases(UW_basis(31), g_22, UW_basis(30), g_23)
+    #print(f"Dimension of intersection30: {len(intersection35)}")
 
-    UW1 = UW_basis(n)
-    UW2 = UW_basis(n - 1)
+    #print("e(3) * e(1):")
+    #result = expand_e(e(3) * e(1))
+    #print(result)
 
-    # get the coefficient matrix instead of the intersection
-    M = intersect_uw_bases(
-        UW1, g(2,2),
-        UW2, g(2,3),
-        return_matrix= True
-    )
+    intersection35 = intersect_uw_bases(UW_basis(31), g_22, UW_basis(30), g_23)
+    print(f"Dimension of intersection35: {len(intersection35)}")
 
-    M = np.array(M)
-    zeros=np.count_nonzero(M == 0)
-    total = M.size
-    sparsity = zeros / total
+    #intersection40 = intersect_uw_bases(UW_basis(40), g_22, UW_basis(39), g_23)
+    #print(f"Dimension of intersection20: {len(intersection40)}")
 
-    print(f"{n}\t{M.shape}\t{M.size}\t{zeros}\t{sparsity:.4f}")
+    #intersection30 = intersect_uw_bases(UW_basis(30), g_22, UW_basis(29), g_23)
+    #print(f"Dimension of intersection20: {len(intersection30)}")
