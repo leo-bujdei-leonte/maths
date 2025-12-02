@@ -326,18 +326,10 @@ def intersect_uw_bases(
     # Rows: unique monomials
     # Columns: expansions e_k g_ij
     coefficient_matrix: List[List[int]] = []
-    zero_count = 0
-    total_count = 0
-    for monomial_key in tqdm(monomial_keys, desc = "Constructing matrix"):
-        row: List[int] = []
-        for expansion in expansions:
+    for i, monomial_key in tqdm(enumerate(monomial_keys), desc = "Constructing matrix"):
+        for j,expansion in enumerate(expansions):
             monomials = _extract_monomials(expansion) # TODO can be saved from the previous loop
             coeff = monomials.get(monomial_key, 0) # same as monomials[monomial_key] if monomial_key in monomials else 0
-            row.append(coeff)
-            total_count += 1
-            if coeff == 0:
-                zero_count += 1
-        coefficient_matrix.append(row)
 
     if return_matrix:
         return coefficient_matrix
