@@ -322,15 +322,23 @@ def intersect_uw_bases(
     # Sort monomials for consistent ordering
     monomial_keys = sorted(all_monomials)
 
+    # --- PRINT THE MONOMIALS ---
+    print("\nMONOMIALS USED AS ROWS:")
+    for m in monomial_keys:
+        print(m)
+    print("Total monomials:", len(monomial_keys))
+    
     # Build coefficient matrix
     # Rows: unique monomials
     # Columns: expansions e_k g_ij
     coefficient_matrix: List[List[int]] = []
     for i, monomial_key in tqdm(enumerate(monomial_keys), desc = "Constructing matrix"):
+        row=[]
         for j,expansion in enumerate(expansions):
             monomials = _extract_monomials(expansion) # TODO can be saved from the previous loop
             coeff = monomials.get(monomial_key, 0) # same as monomials[monomial_key] if monomial_key in monomials else 0
-
+            row.append(coeff)
+        coefficient_matrix.append(row)    
     if return_matrix:
         return coefficient_matrix
 
@@ -563,43 +571,9 @@ if __name__ == "__main__":
     print("=" * 60)
     print()
 
-    print("Example: Intersection of UW_basis(3)*g(2,2) and UW_basis(2)*g(2,3)")
+    print("Example: Intersection of UW_basis(5)*g(2,2) and UW_basis(4)*g(2,3)")
     print()
 
-    # Show the bases
-    print("UW_basis(3):", uw_3)
-    print("g(2,2):", g_22)
-    print()
-    print("UW_basis(2):", uw_2)
-    print("g(2,3):", g_23)
-    print()
-
-    # Show expansions for context
-    print("Expansions of UW_basis(3)[i] * g(2,2):")
-    for i, basis_elem in enumerate(uw_3):
-        expansion = expand_e(basis_elem * g_22)
-        print(f"  [{i}]: {expansion}")
-    print()
-
-    print("Expansions of UW_basis(2)[j] * g(2,3):")
-    for j, basis_elem in enumerate(uw_2):
-        expansion = expand_e(basis_elem * g_23)
-        print(f"  [{j}]: {expansion}")
-    print()
-
-    # Compute intersection
-    intersection = intersect_uw_bases(uw_3, g_22, uw_2, g_23)
-    print(f"The intersection is : {intersection}")
-    print(f"Dimension of intersection: {len(intersection)}")
-    print()
-
-    if intersection:
-        print("Intersection basis elements:")
-        for i, elem in enumerate(intersection):
-            print(f"  [{i}]: {elem}")
-    else:
-        print("Intersection is trivial (contains only zero).")
-    print()
 
 
     print("Example: Intersection of UW_basis(6)*g(2,2) and UW_basis(5)*g(2,3)")
@@ -615,18 +589,18 @@ if __name__ == "__main__":
     print("g(2,3):", g_23)
     print()
 
-    # # Show expansions for context
-    #print("Expansions of UW_basis(6)[i] * g(2,2):")
-    #for i, basis_elem in enumerate(uw_6):
-    #    expansion = expand_e(basis_elem * g_22)
-    #    print(f"  [{i}]: {expansion}")
-    #print()
+    #Show expansions for context
+    print("Expansions of UW_basis(6)[i] * g(2,2):")
+    for i, basis_elem in enumerate(uw_6):
+        expansion = expand_e(basis_elem * g_22)
+        print(f"  [{i}]: {expansion}")
+    print()
 
-    #print("Expansions of UW_basis(5)[i] * g(2,3):")
-    #for i, basis_elem in enumerate(uw_5):
-    #    expansion = expand_e(g_22 * basis_elem)
-    #    print(f"  [{i}]: {expansion}")
-    #print()
+    print("Expansions of UW_basis(5)[i] * g(2,3):")
+    for i, basis_elem in enumerate(uw_5):
+        expansion = expand_e(g_22 * basis_elem)
+        print(f"  [{i}]: {expansion}")
+    print()
  
 
     #intersection30 = intersect_uw_bases(UW_basis(26), g_22, UW_basis(25), g_23)
@@ -636,21 +610,20 @@ if __name__ == "__main__":
 #print("n\aapproximate_p(n-4) + approximate_p(n-5) - approximate_p(n))\approximate_p(n-4) + approximate_p(n-5) - approximate_p(n)-(approximate_p(n-5) + approximate_p(n-6) - approximate_p(n-1)")
 print("-" * 50)
 
-for n in range(1, 35):
+#for n in range(1, 35):
 
-    UW1 = UW_basis(n)
-    UW2 = UW_basis(n - 1)
+UW1 = UW_basis(6)
+UW2 = UW_basis(5)
 
     # get the coefficient matrix instead of the intersection
-    M = intersect_uw_bases(
-        UW1, g(2,2),
-        UW2, g(2,3),
-        return_matrix= True
-    )
+M = intersect_uw_bases(
+    UW1, g(2,2),
+    UW2, g(2,3),
+    return_matrix= True)
 
-    M = np.array(M)
-    zeros=np.count_nonzero(M == 0)
-    total = M.size
-    sparsity = zeros / total
+M = np.array(M)
+zeros=np.count_nonzero(M == 0)
+total = M.size
+sparsity = zeros / total
 
-    print(f"{n}\t{M.shape}\t{M.size}\t{zeros}\t{sparsity:.4f}")
+print(f"{10}\t{M.shape}\t{M.size}\t{zeros}\t{sparsity}")

@@ -23,10 +23,6 @@ from math import gcd
 from fractions import Fraction
 import numpy as np
 from collections import defaultdict
-from tqdm import tqdm
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning)
-
 
 # Type aliases for clarity
 Monomial = Tuple[int, ...]  # Ordered tuple of indices representing e_{i1} * e_{i2} * ...
@@ -35,7 +31,7 @@ CoeffDict = Dict[Monomial, int]  # Sparse representation: monomial -> coefficien
 
 # ==================== Monomial Reduction (Core Algorithm) ====================
 
-@lru_cache(maxsize=10000000000)
+@lru_cache(maxsize=100000)
 def reduce_monomial(seq: Monomial) -> Tuple[Tuple[Monomial, int], ...]:
     """
     Reduce a monomial sequence to sorted form using the non-commutative rule:
@@ -58,7 +54,7 @@ def reduce_monomial(seq: Monomial) -> Tuple[Tuple[Monomial, int], ...]:
     if len(seq) <= 1:
         return ((seq, 1),) if seq else (((), 1),)
     
-    # Check if already in increasing order
+    # Check if already in non-decreasing order
     if all(seq[i] <= seq[i + 1] for i in range(len(seq) - 1)):
         return ((seq, 1),)
     
@@ -151,6 +147,12 @@ class Polynomial:
             result[mono] = result.get(mono, 0) + coeff
         return Polynomial(result)
     
+    def __radd__(self, other):
+        """Right addition (for sum() support)."""
+        if other == 0:
+            return self
+        return self.__add__(other)
+    
     def __neg__(self) -> Polynomial:
         """Negate all coefficients."""
         return Polynomial({m: -c for m, c in self.terms.items()})
@@ -189,6 +191,12 @@ class Polynomial:
             
             return Polynomial(dict(result))
         
+        return NotImplemented
+    
+    def __rmul__(self, other):
+        """Right multiplication (for scalar * polynomial)."""
+        if isinstance(other, int):
+            return self.__mul__(other)
         return NotImplemented
     
     def __pow__(self, exponent: int) -> Polynomial:
@@ -289,6 +297,7 @@ class Polynomial:
         """Return expanded form (already expanded in our representation)."""
         return self.copy()
 
+
 # ==================== Convenience Functions ====================
 
 def e(index: int) -> Polynomial:
@@ -319,7 +328,7 @@ def g(n: int, m: int) -> Polynomial:
     """
     term1 = e(n) * e(m)
     term2 = e(1) * e(n + m - 1)
-    term3 = e(n + m)*(n-1)
+    term3 = (n - 1) * e(n + m)
     return term1 - term2 + term3
 
 
@@ -470,15 +479,13 @@ def compute_intersection(
     
     if verbose:
         print("  Expanding basis1 * g1...")
-    with tqdm(basis1, desc="Basis1 * g1",disable = not verbose) as pbar1:
-        for poly in pbar1:
-            expansions.append((poly * g1).expand())
+    for poly in basis1:
+        expansions.append((poly * g1).expand())
     
     if verbose:
         print("  Expanding basis2 * g2...")
-    with tqdm(basis2, desc="Basis2 * g2",disable = not verbose) as pbar2:
-        for poly in pbar2:
-            expansions.append((poly * g2).expand())
+    for poly in basis2:
+        expansions.append((poly * g2).expand())
     
     # Step 2: Collect all monomials
     if verbose:
@@ -490,13 +497,15 @@ def compute_intersection(
     
     monomial_list = sorted(all_monomials)
     
+    if verbose:
+        print(f"  Found {len(monomial_list)} unique monomials")
+        if len(monomial_list) < 50:  # Only print if not too many
+            print(f"  Monomials: {monomial_list}")
+    
     if not monomial_list or not expansions:
         if return_matrix:
             return np.array([])
         return []
-    
-    if verbose:
-        print(f"  Found {len(monomial_list)} unique monomials")
     
     # Step 3: Build coefficient matrix
     if verbose:
@@ -585,7 +594,7 @@ def main():
     for i, elem in enumerate(uw5):
         print(f"  [{i}] {elem}")
     print()
-  
+    
     # Intersection
     print("=" * 70)
     print("Intersection Computation:")
@@ -603,6 +612,6 @@ def main():
     else:
         print("  (trivial - only zero)")
     print()
-  
+ 
 if __name__ == "__main__":
     main()
