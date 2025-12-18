@@ -1,18 +1,11 @@
 """
 Optimized non-commutative algebra implementation for computing intersections
-of U(W_+) subspaces with custom multiplication rules.
+of U(W_+) subspaces with non-multiplication rules.
 
-Key Features:
-- Efficient polynomial representation with operator overloading
-- Memoized monomial reduction for O(1) lookup of previously computed products
-- Clean separation of concerns: monomials, polynomials, basis generation, intersection
-- Type-safe implementation with comprehensive type hints
-- Memory-efficient sparse representation
+- Polynomial representation with operator overloading
 
 Multiplication Rule:
     e_n * e_m = e_m * e_n + (m-n) * e_{n+m} when n > m
-
-Author: Enhanced version with improved architecture and performance
 """
 
 from __future__ import annotations
@@ -22,23 +15,29 @@ from dataclasses import dataclass, field
 from math import gcd
 from fractions import Fraction
 import numpy as np
+import scipy as sp
+from scipy.sparse import coo_matrix
+from scipy.sparse.linalg import svds
 from collections import defaultdict
 
-# Type aliases for clarity
 Monomial = Tuple[int, ...]  # Ordered tuple of indices representing e_{i1} * e_{i2} * ...
 CoeffDict = Dict[Monomial, int]  # Sparse representation: monomial -> coefficient
 
 
-# ==================== Monomial Reduction (Core Algorithm) ====================
-
-@lru_cache(maxsize=100000)
+#Monomial Reduction 
+# lru_cache: decorator
+#Remembers the results of previous function calls
+#If you call the function with the same arguments again, it returns the cached result instantly
+#Keeps at most maxsize results in memory
+#When full, removes the "least recently used" result
+@lru_cache(maxsize=100000000)
 def reduce_monomial(seq: Monomial) -> Tuple[Tuple[Monomial, int], ...]:
     """
     Reduce a monomial sequence to sorted form using the non-commutative rule:
         e_n * e_m = e_m * e_n + (m-n) * e_{n+m} when n > m
     
-    This is the performance-critical function. Results are cached indefinitely
-    for maximum speed on repeated computations.
+    Results are cached indefinitely for maximum speed on repeated computations. 
+    MIGHT NOT BE THE BEST OPTION SPACE-WISE
     
     Args:
         seq: Tuple of indices representing a monomial product
@@ -50,11 +49,12 @@ def reduce_monomial(seq: Monomial) -> Tuple[Tuple[Monomial, int], ...]:
         reduce_monomial((3, 1)) -> (((1, 3), 1), ((4,), -2))
         which represents: e_3 * e_1 = e_1 * e_3 - 2*e_4
     """
+
     # Base cases: empty or single element is already reduced
     if len(seq) <= 1:
         return ((seq, 1),) if seq else (((), 1),)
     
-    # Check if already in non-decreasing order
+    # Check if already in increasing order
     if all(seq[i] <= seq[i + 1] for i in range(len(seq) - 1)):
         return ((seq, 1),)
     
@@ -93,8 +93,8 @@ def reduce_to_dict(seq: Monomial) -> CoeffDict:
     return {mono: coeff for mono, coeff in reduce_monomial(seq)}
 
 
-# ==================== Polynomial Class ====================
-
+# Polynomial Class
+#provides a decorator and functions for adding special methods
 @dataclass
 class Polynomial:
     """
@@ -114,7 +114,8 @@ class Polynomial:
         """Ensure all terms have non-zero coefficients."""
         self.terms = {m: c for m, c in self.terms.items() if c != 0}
     
-    # ==================== Factory Methods ====================
+    # Factory Methods
+    # example of usage: can do Polynomial.constant instead of calling the instance
     
     @classmethod
     def zero(cls) -> Polynomial:
@@ -138,7 +139,7 @@ class Polynomial:
         """Create e_i for a given index i."""
         return cls.from_monomial((index,), 1)
     
-    # ==================== Arithmetic Operations ====================
+    # Arithmetic Operations
     
     def __add__(self, other: Polynomial) -> Polynomial:
         """Add two polynomials."""
@@ -212,7 +213,7 @@ class Polynomial:
         if exponent == 1:
             return Polynomial(dict(self.terms))
         
-        # Binary exponentiation
+        # Binary exponentiation done by writing the exponent in binary and then dividing it by 2 (more like multiplying) 
         result = Polynomial.constant(1)
         base = Polynomial(dict(self.terms))
         exp = exponent
@@ -225,7 +226,7 @@ class Polynomial:
         
         return result
     
-    # ==================== Properties ====================
+    # Properties
     
     def is_zero(self) -> bool:
         """Check if polynomial is zero."""
@@ -241,16 +242,16 @@ class Polynomial:
         """Return number of non-zero terms."""
         return len(self.terms)
     
-    # ==================== String Representation ====================
+    # String Representation
     
     def __repr__(self) -> str:
-        """Detailed representation for debugging."""
+        """Rep for debugging."""
         if not self.terms:
             return "Polynomial({})"
         return f"Polynomial({dict(self.terms)})"
     
     def __str__(self) -> str:
-        """Human-readable string representation."""
+        """Readable string representation."""
         if not self.terms:
             return "0"
         
@@ -287,10 +288,10 @@ class Polynomial:
         """Boolean conversion: False if zero, True otherwise."""
         return not self.is_zero()
     
-    # ==================== Utility Methods ====================
+    # Methods
     
     def copy(self) -> Polynomial:
-        """Create a deep copy of the polynomial."""
+        """Create a copy of the polynomial."""
         return Polynomial(dict(self.terms))
     
     def expand(self) -> Polynomial:
@@ -298,7 +299,7 @@ class Polynomial:
         return self.copy()
 
 
-# ==================== Convenience Functions ====================
+# Convenience Functions
 
 def e(index: int) -> Polynomial:
     """
@@ -332,11 +333,11 @@ def g(n: int, m: int) -> Polynomial:
     return term1 - term2 + term3
 
 
-# ==================== Partition Generation ====================
+# Partition Generation
 
 def integer_partitions(n: int, min_part: int = 1) -> Iterator[Tuple[int, ...]]:
     """
-    Generate all integer partitions of n with parts in non-decreasing order.
+    Generate all integer partitions of n with parts in increasing order.
     
     Args:
         n: Integer to partition
@@ -389,9 +390,9 @@ def generate_uw_basis(n: int, verbose: bool = False) -> List[Polynomial]:
     return basis
 
 
-# ==================== Vector Rationalization ====================
+# Vector Rationalization
 
-def rationalize_vector(vec: np.ndarray, max_denominator: int = 10000) -> List[int]:
+def rationalize_vector(vec: np.ndarray, max_denominator: int = 1000000) -> List[int]:
     """
     Convert a floating-point vector to integer coefficients.
     
@@ -436,17 +437,16 @@ def rationalize_vector(vec: np.ndarray, max_denominator: int = 10000) -> List[in
     return int_vec
 
 
-# ==================== Intersection Computation ====================
+# Intersection Computation
 
 def compute_intersection(
     basis1: List[Polynomial],
     g1: Polynomial,
     basis2: List[Polynomial],
     g2: Polynomial,
-    *,
     return_matrix: bool = False,
     tolerance: float = 1e-10,
-    verbose: bool = False
+    verbose: bool = True
 ) -> Union[List[Polynomial], np.ndarray]:
     """
     Compute the intersection of span{basis1 * g1} and span{basis2 * g2}.
@@ -558,7 +558,7 @@ def compute_intersection(
     return intersection_basis
 
 
-# ==================== Main Demo ====================
+# Example
 
 def main():
     """Demonstration of the non-commutative algebra system."""
@@ -601,10 +601,16 @@ def main():
     print("=" * 70)
     print()
     
-    uw36 = generate_uw_basis(36)
-    uw35 = generate_uw_basis(35)
-    intersection = compute_intersection(uw36, g22, uw35, g23, verbose=True)
-    
+    #uw36 = generate_uw_basis(11)
+    #uw35 = generate_uw_basis(10)
+    #intersection = compute_intersection(uw36, g22, uw35, g23, verbose=True)
+    #M = compute_intersection(uw6, g22, uw5, g23,return_matrix=True)
+    #print(M)
+
+    uw36 = generate_uw_basis(6)
+    uw35 = generate_uw_basis(5)
+    intersection = compute_intersection(uw36, e(1)*g22, uw35, e(2)*g22, verbose=True)
+
     print("\nIntersection basis:")
     if intersection:
         for i, elem in enumerate(intersection):

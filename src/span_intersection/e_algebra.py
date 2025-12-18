@@ -626,4 +626,4 @@ zeros=np.count_nonzero(M == 0)
 total = M.size
 sparsity = zeros / total
 
-print(f"{10}\t{M.shape}\t{M.size}\t{zeros}\t{sparsity}")
+print(f"{10}\t\t{M}\t{M.shape}\t{M.size}\t{zeros}\t{sparsity}")
