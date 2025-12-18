@@ -496,7 +496,7 @@ def compute_intersection(
         all_monomials.update(expansion.terms.keys())
     
     monomial_list = sorted(all_monomials)
-    
+
     if verbose:
         print(f"  Found {len(monomial_list)} unique monomials")
         if len(monomial_list) < 50:  # Only print if not too many
@@ -511,29 +511,38 @@ def compute_intersection(
     if verbose:
         print("  Building coefficient matrix...")
     
-    matrix = np.zeros((len(monomial_list), len(expansions)), dtype=float)
     mono_to_idx = {mono: i for i, mono in enumerate(monomial_list)}
-    
+    v = []
+    r = []
+    c = []
     for col, expansion in enumerate(expansions):
         for mono, coeff in expansion.terms.items():
-            row = mono_to_idx[mono]
-            matrix[row, col] = float(coeff)
-    
-    if return_matrix:
-        return matrix
+            if coeff != 0:
+                v.append(coeff)
+                r.append(mono_to_idx[mono])
+                c.append(col)
+            
+    coo = coo_matrix((v,(r,c)),shape =(len(monomial_list),len(expansions)))
     
     # Step 4: Compute null space
     if verbose:
-        print("  Computing null space via SVD...")
+        print("  Computing null space via SVD for sparse...")
     
-    U, singular_values, Vt = np.linalg.svd(matrix, full_matrices=True)
-    rank = np.sum(singular_values > tolerance)
-    null_space = Vt[rank:].T
+    U, s, Vt = svds(coo, k = min(coo.shape)-1, which="SM")
+    null_mask = s < tolerance
+    null_space =  Vt.T[:, null_mask]
+
     
     if verbose:
-        print(f"  Matrix shape: {matrix.shape}")
-        print(f"  Rank: {rank}")
+        print(f"  Matrix shape: {coo.shape}")
         print(f"  Null space dimension: {null_space.shape[1]}")
+    
+    prod = coo @ null_space
+
+    if not np.allclose(prod, np.zeros(prod.shape), tolerance):
+        print(prod)
+        print("ERROR: SVD did not compute nullspace correctly!")
+        exit(1)
     
     # Step 5: Reconstruct intersection elements
     intersection_basis = []
