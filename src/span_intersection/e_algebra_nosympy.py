@@ -19,6 +19,7 @@ import scipy as sp
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import svds
 from collections import defaultdict
+from tqdm import tqdm
 
 Monomial = Tuple[int, ...]  # Ordered tuple of indices representing e_{i1} * e_{i2} * ...
 CoeffDict = Dict[Monomial, int]  # Sparse representation: monomial -> coefficient
@@ -518,11 +519,11 @@ def compute_intersection(
     for col, expansion in enumerate(expansions):
         for mono, coeff in expansion.terms.items():
             if coeff != 0:
-                v.append(coeff)
+                v.append(float(coeff))
                 r.append(mono_to_idx[mono])
                 c.append(col)
-            
-    coo = coo_matrix((v,(r,c)),shape =(len(monomial_list),len(expansions)))
+    
+    coo = coo_matrix((np.array(v), (np.array(r), np.array(c))), shape=(len(monomial_list), len(expansions)))
     
     # Step 4: Compute null space
     if verbose:
@@ -543,7 +544,7 @@ def compute_intersection(
         print(prod)
         print("ERROR: SVD did not compute nullspace correctly!")
         exit(1)
-    
+
     # Step 5: Reconstruct intersection elements
     intersection_basis = []
     n1 = len(basis1)
@@ -616,9 +617,9 @@ def main():
     #M = compute_intersection(uw6, g22, uw5, g23,return_matrix=True)
     #print(M)
 
-    uw36 = generate_uw_basis(6)
-    uw35 = generate_uw_basis(5)
-    intersection = compute_intersection(uw36, e(1)*g22, uw35, e(2)*g22, verbose=True)
+    uw36 = generate_uw_basis(36)
+    uw35 = generate_uw_basis(35)
+    intersection = compute_intersection(uw36, g22, uw35, g23, verbose=True)
 
     print("\nIntersection basis:")
     if intersection:
