@@ -16,7 +16,7 @@ from math import gcd
 from fractions import Fraction
 import numpy as np
 import scipy as sp
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, issparse
 from scipy.sparse.linalg import svds
 from collections import defaultdict
 from tqdm import tqdm
@@ -31,7 +31,7 @@ CoeffDict = Dict[Monomial, int]  # Sparse representation: monomial -> coefficien
 #If you call the function with the same arguments again, it returns the cached result instantly
 #Keeps at most maxsize results in memory
 #When full, removes the "least recently used" result
-@lru_cache(maxsize=100000000)
+@lru_cache(maxsize=10000)
 def reduce_monomial(seq: Monomial) -> Tuple[Tuple[Monomial, int], ...]:
     """
     Reduce a monomial sequence to sorted form using the non-commutative rule:
@@ -357,6 +357,7 @@ def integer_partitions(n: int, min_part: int = 1) -> Iterator[Tuple[int, ...]]:
             yield (i,) + partition
 
 
+
 def generate_uw_basis(n: int, verbose: bool = False) -> List[Polynomial]:
     """
     Generate the Poincaré-Birkhoff-Witt (PBW) basis for U(W_+)_n.
@@ -385,8 +386,7 @@ def generate_uw_basis(n: int, verbose: bool = False) -> List[Polynomial]:
             product = product * e(index)
         basis.append(product)
     
-    if verbose:
-        print(f"  Generated {len(basis)} basis elements")
+    print(f"[GEN] Finished generate_uw_basis({n})", flush=True)
     
     return basis
 
@@ -522,22 +522,23 @@ def compute_intersection(
                 v.append(float(coeff))
                 r.append(mono_to_idx[mono])
                 c.append(col)
-    
+    print(f"[MAT] Building sparse matrix: rows={len(monomial_list)}, cols={len(expansions)}", flush=True)
     coo = coo_matrix((np.array(v), (np.array(r), np.array(c))), shape=(len(monomial_list), len(expansions)))
     
     # Step 4: Compute null space
-    if verbose:
-        print("  Computing null space via SVD for sparse...")
     
+    print(f"Sparsity: {(1.0 - coo.nnz / (coo.shape[1]*coo.shape[1]))*100:.2f}%")
+    print("[SVD] Starting svds", flush=True)
+    print(f"[SVD] matrix shape={coo.shape}", flush=True)
+    print(f"[SVD] requesting k={min(coo.shape)-1}", flush=True)
+
     U, s, Vt = svds(coo, k = min(coo.shape)-1, which="SM")
     null_mask = s < tolerance
     null_space =  Vt.T[:, null_mask]
 
+    print("[SVD] Finished svds", flush=True)
     
-    if verbose:
-        print(f"  Matrix shape: {coo.shape}")
-        print(f"  Null space dimension: {null_space.shape[1]}")
-    
+  
     prod = coo @ null_space
 
     if not np.allclose(prod, np.zeros(prod.shape), tolerance):
@@ -566,7 +567,6 @@ def compute_intersection(
         print(f"  Intersection dimension: {len(intersection_basis)}")
     
     return intersection_basis
-
 
 # Example
 
@@ -629,5 +629,7 @@ def main():
         print("  (trivial - only zero)")
     print()
  
+ 
+
 if __name__ == "__main__":
     main()

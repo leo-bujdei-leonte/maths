@@ -612,8 +612,8 @@ print("-" * 50)
 
 #for n in range(1, 35):
 
-UW1 = UW_basis(6)
-UW2 = UW_basis(5)
+UW1 = UW_basis(26)
+UW2 = UW_basis(25)
 
     # get the coefficient matrix instead of the intersection
 M = intersect_uw_bases(
