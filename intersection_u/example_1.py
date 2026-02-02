@@ -9,7 +9,7 @@ import numpy as np
 from copy import deepcopy
 from collections import defaultdict
 
-    """
+"""
     Computes the product e_a1 * e_a2 * ... * e_an, where e_ai = x^{ai+1} partial.
     The inputs are a list of coefficients a1, a2, ..., an.
     """

@@ -624,7 +624,6 @@ def fully_expand(poly: Polynomial) -> Polynomial:
 
 
 #INTERSECTION COMPUTATION
-
 def compute_intersection(
     basis1: List[Polynomial],
     g1: Polynomial,
@@ -637,31 +636,6 @@ def compute_intersection(
 ) -> Union[Tuple[bool, List[Polynomial], Dict[str, any]], np.ndarray]:
     """
     Compute the intersection of span{basis1 * g1} and span{basis2 * g2}.
-    
-    This solves a homogeneous linear system by:
-    1. Expanding all products basis[i] * g
-    2. Building coefficient matrix (rows = monomials, cols = products)
-    3. Computing rank using specified method (NumPy or LinBox)
-    4. Determining nullity using rank-nullity theorem
-    5. Extracting nullspace vectors via SVD and reconstructing intersection basis
-    
-    Key insight: For a matrix M with shape (m, n):
-        nullity = n - rank
-    where n is the number of columns (number of basis products).
-    
-    Args:
-        basis1: First basis (list of Polynomials)
-        g1: First element to multiply with
-        basis2: Second basis (list of Polynomials)
-        g2: Second element to multiply with
-        rank_method: "numpy" or "linbox" for rank computation
-        return_matrix: If True, return coefficient matrix instead of intersection
-        tolerance: Threshold for singular values (numpy only)
-        verbose: If True, print progress information
-        
-    Returns:
-        Tuple (intersection_exists, intersection_basis, debug_info) or coefficient matrix
-        where intersection_basis is a list of Polynomial objects forming a basis for the intersection
     """
     if verbose:
         print("=" * 70)
@@ -682,10 +656,9 @@ def compute_intersection(
     if verbose:
         print("  Expanding basis2 * g2...")
     for poly in tqdm(basis2, disable=not verbose, desc="Basis2"):
-        # Note: we add negative so the system is basis1*g1 - basis2*g2 = 0
         expansions.append(-fully_expand(poly * g2))
     
-    # Step 2: Collect all monomials (these are the ROWS of the matrix)
+    # Step 2: Collect all monomials
     if verbose:
         print("  Collecting monomials...")
     
@@ -694,7 +667,6 @@ def compute_intersection(
         all_monomials.update(expansion.terms.keys())
     
     monomial_list = sorted(all_monomials)
-    
     num_monomials = len(monomial_list)
     num_products = len(expansions)
 
@@ -714,9 +686,9 @@ def compute_intersection(
         print("  Building coefficient matrix...")
     
     mono_to_idx = {mono: i for i, mono in enumerate(monomial_list)}
-    v = []  # values
-    r = []  # row indices
-    c = []  # column indices
+    v = []
+    r = []
+    c = []
     
     for col, expansion in enumerate(expansions):
         for mono, coeff in expansion.terms.items():
@@ -725,7 +697,6 @@ def compute_intersection(
                 r.append(mono_to_idx[mono])
                 c.append(col)
     
-    # Create sparse matrix
     coo = coo_matrix(
         (np.array(v), (np.array(r), np.array(c))),
         shape=(num_monomials, num_products)
@@ -742,22 +713,19 @@ def compute_intersection(
     if return_matrix:
         return coo.toarray()
     
-    # Step 4: Compute rank using specified method
+    # Step 4: Compute rank
     if verbose:
         print("\n[RANK COMPUTATION]")
     
-    try:  
+    try:
         computer = RankComputer(backend=rank_method)
-        rank, rank_info = computer.compute_rank(
-        csr,
-        tol=tolerance,
-        verbose=verbose
-        )
+        rank, rank_info = computer.compute_rank(csr, tol=tolerance, verbose=verbose)
     except Exception as e:
         if verbose:
             print(f"  [ERROR] Rank computation failed: {e}")
         return False, [], {"intersection_exists": False, "rank": 0, "nullity": num_products, "error": str(e)}
-# Step 5a: Method 1 - Rank-Nullity Theorem
+    
+    # Step 5: Compute nullity
     nullity_from_rank = num_products - rank
 
     if verbose:
@@ -767,65 +735,122 @@ def compute_intersection(
         print(f"    rank(M) = {rank}")
         print(f"    nullity = num_products - rank = {num_products} - {rank} = {nullity_from_rank}")
 
-# Step 5b: Method 2 - Direct Nullspace
-    vect = scipy.linalg.null_space(coo.toarray(), rcond=tolerance)
-    nullity_from_nullspace = vect.shape[1]
+    # Compute nullspace using scipy
+    null_space = scipy.linalg.null_space(coo.toarray())
+    nullity_from_nullspace = null_space.shape[1]
 
     if verbose:
         print(f"\n  Method 2 (Direct Nullspace):")
-        print(f"    scipy.linalg.null_space() returned matrix of shape: {vect.shape}")
-        print(f"    nullity = vect.shape[1] = {nullity_from_nullspace}")
-
-# Step 5c: Compare and diagnose
-    if verbose:
-        print(f"\n[COMPARISON]")
-        print(f"  Nullity from rank-nullity theorem: {nullity_from_rank}")
-        print(f"  Nullity from null space dimension: {nullity_from_nullspace}")
+        print(f"    scipy.linalg.null_space() returned matrix of shape: {null_space.shape}")
+        print(f"    nullity = {nullity_from_nullspace}")
     
-    if nullity_from_rank == nullity_from_nullspace:
-        print(f"  ✓ METHODS AGREE")
-    else:
-        print(f"  ✗ DISCREPANCY DETECTED")
-        print(f"    Difference: {abs(nullity_from_rank - nullity_from_nullspace)}")
-        print(f"    This suggests tolerance issues or numerical instability.")
-
-# Use the direct nullspace dimension (more reliable)
+    # Use nullspace dimension as more reliable
     nullity = nullity_from_nullspace
-    intersection_exists = nullity > 0
+    intersection_exists = (nullity > 0)
 
     if verbose:
         print(f"\n[RESULT]")
-    if intersection_exists:
-        print(f"  ✓ INTERSECTION EXISTS")
-        print(f"    Dimension of intersection: {nullity}")
-    else:
-        print(f"  ✗ NO NON-TRIVIAL INTERSECTION")
+        if intersection_exists:
+            print(f"   INTERSECTION EXISTS")
+            print(f"    Dimension of intersection: {nullity}")
+        else:
+            print(f"   NO NON-TRIVIAL INTERSECTION")
     
-    # Step 6: Compute SVD to extract nullspace
-    if verbose:
-        print(f"\n[SVD NULLSPACE EXTRACTION]")
-        print(f"  Computing SVD for nullspace...")
-    
-    if not intersection_exists:
-        # No nullspace to compute
-        if verbose:
-            print("  No nullspace (rank equals number of columns)")
-    else:
-        try:
-            vect=scipy.linalg.null_space(coo.toarray())
-            print(f"Dimension of the null space is {vect.shape[1]}.")
+    # Step 6: Initialize intersection_basis
+    intersection_basis = []
 
+    # Step 7: Extract nullspace and reconstruct basis
+    if intersection_exists:
+        if verbose:
+            print(f"\n[NULLSPACE EXTRACTION & RECONSTRUCTION]")
+        
+        try:
             # Verify nullspace
-            prod = coo.toarray() @ vect
+            prod = coo.toarray() @ null_space
             max_residual = np.max(np.abs(prod))
+            
             if verbose:
                 print(f"  Verification: max |M @ nullspace| = {max_residual:.2e}")
             
             if not np.allclose(prod, np.zeros(prod.shape), atol=tolerance):
                 if verbose:
-                    print(f"  [WARNING] SVD nullspace verification failed (residual: {max_residual})")
+                    print(f"  [WARNING] Nullspace verification failed (residual: {max_residual})")
                     print(f"  Proceeding anyway, but results may be inaccurate")
+
+            if verbose:
+                print(f"\n[RECONSTRUCTING INTERSECTION BASIS]")
+                print(f"  Processing {null_space.shape[1]} nullspace vectors...")
+
+            n1 = len(basis1)
+            n2 = len(basis2)
+
+            for col_idx in range(null_space.shape[1]):
+                null_vector = null_space[:, col_idx]
+                int_coeffs = rationalize_vector(null_vector)
             
+                # Reconstruct from basis1 side
+                result1 = Polynomial.zero()
+                for i in range(n1):
+                    if int_coeffs[i] != 0:
+                        result1 = result1 + (int_coeffs[i] * fully_expand(basis1[i] * g1))
+            
+                # Reconstruct from basis2 side
+                result2 = Polynomial.zero()
+                for j in range(n2):
+                    if int_coeffs[n1 + j] != 0:
+                        result2 = result2 + (int_coeffs[n1 + j] * -fully_expand(basis2[j] * g2))
+            
+                # Verify: result1 + result2 should equal 0
+                verification = result1 + result2
+            
+                if verbose:
+                    print(f"  Vector {col_idx + 1}:")
+                    print(f"resul1-result2= {verification}")
+                    print(f"    From basis1: degree={result1.degree() if not result1.is_zero() else 'zero'}, terms={result1.num_terms()}")
+                    print(f"    From basis2: degree={result2.degree() if not result2.is_zero() else 'zero'}, terms={result2.num_terms()}")
+                    print(f"    Verification (result1 + result2): {'VALID' if verification.is_zero() else 'INVALID'}")
+            
+                # Only add if verification passes
+                if not result1.is_zero() and verification.is_zero():
+                    intersection_basis.append(result1)
+                elif result1.is_zero() and result2.is_zero():
+                    if verbose:
+                        print(f"    Skipping: both results are zero")
+                else:
+                    if verbose:
+                        print(f"The addition is: {intersection_basis}")
+                        print(f"    WARNING: Nullspace verification failed!")
+
+            if verbose:
+                
+                print(f"  Final intersection dimension: {len(intersection_basis)}")
+
+        except Exception as e:
+            if verbose:
+                print(f" Reconstruction failed: {e}")
+            intersection_basis = []
+    else:
+        if verbose:
+            print("  No non-trivial nullspace (rank equals number of columns)")
+    
+    # Step 8: Return results
+    if verbose:
+        print("=" * 70)
+    
+    debug_info = {
+        "intersection_exists": intersection_exists,
+        "rank": rank,
+        "nullity": nullity,
+        "num_monomials": num_monomials,
+        "num_products": num_products,
+        "rank_computation": rank_info,
+        "intersection_dimension": len(intersection_basis)
+    }
+    
+    return intersection_exists, intersection_basis, debug_info
+
+
+"""
             # Step 7: Reconstruct intersection elements from nullspace
             if verbose:
                 print(f"\n[RECONSTRUCTING INTERSECTION BASIS]")
@@ -837,8 +862,8 @@ def compute_intersection(
 
                 int_coeffs = rationalize_vector(null_vector)
                 
-                if verbose:
-                    print(f"    Rationalized coefficients: {int_coeffs}")
+                #if verbose:
+                #    print(f"    Rationalized coefficients: {int_coeffs}")
                 
                 # Build linear combination from basis1 side
                 result = Polynomial.zero()
@@ -847,8 +872,6 @@ def compute_intersection(
                         result = result + (int_coeffs[i] * fully_expand(basis1[i] * g1))
                     if not result.is_zero():
                         intersection_basis.append(result)
-                    if verbose:
-                        return result
                 else:
                     if verbose:
                         print(f"    Resulted in zero polynomial, skipping")
@@ -856,7 +879,7 @@ def compute_intersection(
             if verbose:
                 print(f"  Final intersection dimension: {len(intersection_basis)}")
 
-            """
+            
             # For nullspace extraction, we need k < min(m, n) to get null vectors
             # svds computes the k largest singular values by default
             # We want the SMALLEST singular values, so use which="SM"
@@ -930,26 +953,8 @@ def compute_intersection(
             if verbose:
                 print(f"  Final intersection dimension: {len(intersection_basis)}")
         """
-        except Exception as e:
-            if verbose:
-                print(f"  [ERROR] SVD nullspace extraction failed: {e}")
-            intersection_basis = []
-    
-            
-    if verbose:
-        print("=" * 70)
-    
-    debug_info = {
-        "intersection_exists": intersection_exists,
-        "rank": rank,
-        "nullity": nullity,
-        "num_monomials": num_monomials,
-        "num_products": num_products,
-        "rank_computation": rank_info,
-        "intersection_dimension": len(intersection_basis)
-    }
-    
-    return intersection_exists, intersection_basis, debug_info
+        
+        
 
 #MAIN DEMONSTRATION
 
@@ -996,7 +1001,8 @@ def main():
     print()
     
     # Test with small degrees
-    for target_degree in range(31, 33):
+    """
+    for target_degree in range(31, 32):
         print(f"\nTesting Degree {target_degree + 5}:")
         print("-" * 70)
         
@@ -1009,8 +1015,48 @@ def main():
             rank_method="numpy",
             verbose=True
         )
-        print(f"Degree {target_degree + 5}: exists={intersection_exists}")
+        print(f"From 22 to 23:Degree {target_degree + 5}: exists={intersection_exists}")
+
+    for target_degree in range(31, 32):
+        print(f"\nTesting Degree {target_degree + 5}:")
+        print("-" * 70)
+        
+        # Compute intersection
+        intersection_exists, intersection_basis, debug_info = compute_intersection(
+            generate_uw_basis(target_degree),
+            g23,
+            generate_uw_basis(target_degree+1),
+            g22,
+            rank_method="numpy",
+            verbose=True
+        )
+        print(f"For 23 to 22:Degree {target_degree + 5}: exists={intersection_exists}")"""
 
 
+        # Compute intersection
+    for target_degree in range(17, 20):
+        print(f"\nTesting Degree {target_degree + 5}:")
+        print("-" * 70)
+
+        intersection_exists, intersection_basis, debug_info = compute_intersection(
+        generate_uw_basis(target_degree+1),e(4),generate_uw_basis(target_degree),
+        e(5),rank_method="numpy",verbose=True)
+        
+        print(f"From 4 to 5:Degree {target_degree + 5}: exists={intersection_exists}")
+
+    for target_degree in range(17, 20):
+        print(f"\nTesting Degree {target_degree + 5}:")
+        print("-" * 70)
+        
+        # Compute intersection
+        intersection_exists, intersection_basis, debug_info = compute_intersection(
+            generate_uw_basis(target_degree),
+            e(5),
+            generate_uw_basis(target_degree+1),
+            e(4),
+            rank_method="numpy",
+            verbose=True
+        )
+        print(f"For 5 to 4:Degree {target_degree + 5}: exists={intersection_exists}")
 if __name__ == "__main__":
     main()

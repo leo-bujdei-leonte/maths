@@ -8,15 +8,14 @@ Null Space Computation: Three Methods Compared
 
 import numpy as np
 from scipy.linalg import svd as dense_svd, null_space
-from scipy.sparse.linalg import svds
-from scipy.sparse import csr_matrix
+from scipy.sparse.linalg import svds, splu
+from scipy.sparse import csr_matrix, csc_array
 import scipy.linalg.interpolative as sli
-import scipy
+import scipy as sp
 
 
-# ==============================================================================
-# METHOD 1: DENSE SVD (Complete Null Space)
-# ==============================================================================
+
+# METHOD 1: DENSE SVD 
 
 def null_space_dense_svd(A, tol=1e-5):
     """
@@ -45,9 +44,7 @@ def null_space_dense_svd(A, tol=1e-5):
     return null_basis, null_indices, s
 
 
-# ==============================================================================
-# METHOD 2: SCIPY BUILT-IN null_space() (Recommended for Dense)
-# ==============================================================================
+# METHOD 2: SCIPY BUILT-IN null_space()
 
 def null_space_builtin(A):
     """
@@ -63,9 +60,7 @@ def null_space_builtin(A):
     return null_space(A)
 
 
-# ==============================================================================
-# METHOD 3: SPARSE SVD (For Large Sparse Matrices)
-# ==============================================================================
+# METHOD 3: SPARSE SVD 
 
 def null_space_sparse_svd(A_sparse, k_null=None, tol=1e-10):
     """
@@ -84,7 +79,7 @@ def null_space_sparse_svd(A_sparse, k_null=None, tol=1e-10):
     m, n = A_sparse.shape
     
     if k_null is None:
-        # Conservative estimate: compute several small singular values
+        # Compute several small singular values
         k_compute = min(n - 1, 10)
     else:
         k_compute = min(k_null, n - 1)
@@ -104,9 +99,62 @@ def null_space_sparse_svd(A_sparse, k_null=None, tol=1e-10):
         return None, None
 
 
-# ==============================================================================
+# METHOD 4: LU NULLSPACE 
+
+def null_lu(A):
+    """
+    Find null space using sparse LU.
+    
+    
+    Args:
+        A_sparse: m x n  matrix 
+    
+    Returns:
+        
+    """
+    P, L, U = sp.linalg.lu(A)
+
+    print(f"The nullspace can be calculated from {U}.")
+
+    
+    return U
+
+# Source - https://stackoverflow.com/a
+# Retrieved 2026-01-28, License - CC BY-SA 3.0
+
+def squarify(M,val):
+    (a,b)=M.shape
+    if a>b:
+        padding=((0,0),(0,a-b))
+    else:
+        padding=((0,b-a),(0,0))
+    return np.pad(M,padding,mode='constant',constant_values=val)
+
+
+# METHOD 5: LU SPARSE NULLSPACE
+
+def null_lusp(A):
+    """
+    Find null space using sparse LU.
+    
+    
+    Args:
+        A_sparse: m x n  matrix 
+    
+    Returns:
+    """
+    y=np.zeros(A.shape[1])
+    
+    A_padded=squarify(A,0)
+    csc_format=csc_array(A_padded)
+    inv_A=splu(csc_format)
+
+    u=inv_A.U
+    x=inv_A.solve(y)
+    return x
+
+
 # VERIFICATION FUNCTION
-# ==============================================================================
 
 def verify_null_space(A, null_basis, method_name):
     """Verify that computed null space vectors satisfy A @ v = 0"""
@@ -129,9 +177,7 @@ def verify_null_space(A, null_basis, method_name):
     print(f"All vectors in null space" if max_residual < 1e-8 else "Issues detected")
 
 
-# ==============================================================================
 # EXAMPLE: Rank-Deficient Matrix
-# ==============================================================================
 
 if __name__ == "__main__":
     # Create a rank-deficient matrix (rank 2, dimension 5)
@@ -152,10 +198,11 @@ if __name__ == "__main__":
     print(f"Numpy Rank: {np.linalg.matrix_rank(A)}")
     print(f"Expected null space dimension: {A.shape[1] - np.linalg.matrix_rank(A)}")
     print()
+    print(f"Check if the matrix is padded: {squarify(A,0)}")
     
-    # ==================================================================
+
+
     # METHOD 1: Dense SVD
-    # ==================================================================
     print("=" * 70)
     print("METHOD 1: Dense SVD")
     print("=" * 70)
@@ -166,11 +213,10 @@ if __name__ == "__main__":
     print(null_1)
     verify_null_space(A, null_1, "Dense SVD")
     
-    # ==================================================================
     # METHOD 2: Built-in null_space()
-    # ==================================================================
+    
     print("=" * 70)
-    print("METHOD 2: scipy.linalg.null_space() [RECOMMENDED]")
+    print("METHOD 2: scipy.linalg.null_space()")
     print("=" * 70)
     null_2 = null_space_builtin(A)
     print(f"Null space basis shape: {null_2.shape}")
@@ -178,13 +224,12 @@ if __name__ == "__main__":
     print(null_2)
     verify_null_space(A, null_2, "Built-in null_space()")
     
-    # ==================================================================
+
     # METHOD 3: Sparse SVD
-    # ==================================================================
     print("=" * 70)
     print("METHOD 3: Sparse SVD")
     print("=" * 70)
-    A_sparse = csr_matrix(A)
+    A_sparse = csr_matrix(squarify(A,0))
     null_3, sparse_s = null_space_sparse_svd(A_sparse, k_null=3)
     
     if null_3 is not None:
@@ -196,9 +241,40 @@ if __name__ == "__main__":
     else:
         print("Sparse SVD computation failed")
     
-    # ==================================================================
+
+    # METHOD 4: LU decomposition
+    print("=" * 70)
+    print("METHOD 4: LU decomposition")
+    print("=" * 70)
+    null_4 = sp.linalg.null_space(null_lu(A))
+    rank=np.sum(np.diagonal(null_lu(A))>0)
+    
+    if null_4 is not None:
+        print(f"Null space basis shape: {null_4.shape}")
+        print("Null space basis vectors:")
+        print(f"Rank obtained with LU decomposition is {rank}")
+        verify_null_space(A, null_4, "LU decomposition")
+    else:
+        print("LU decomposition failed computation failed")
+    
+# METHOD 5: sparse LU decomposition
+    print("=" * 70)
+    print("METHOD 5: Sparse LU decomposition")
+    print("=" * 70)
+    #print(f"The null_space is: {null_lusp(A)}")
+    lu=splu(csc_array(squarify(A,0)))
+    print(f"Try rank: {sum(abs(np.diag(lu.U.toarray())) > 1e-10)}")
+    """
+    if null_4 is not None:
+        print(f"Null space basis shape: {null_4.shape}")
+        print("Null space basis vectors:")
+        print(f"Rank obtained with LU decomposition is {rank}")
+        verify_null_space(A, null_4, "LU decomposition")
+    else:
+        print("LU decomposition failed computation failed")
+    """
+
     # COMPARISON
-    # ==================================================================
     print("=" * 70)
     print("COMPARISON: All Methods")
     print("=" * 70)
@@ -206,5 +282,7 @@ if __name__ == "__main__":
     print(f"Method 2 (Built-in):        null space dim = {null_2.shape[1]}")
     if null_3 is not None:
         print(f"Method 3 (Sparse SVD):      null space dim = {null_3.shape[1]}")
+    if null_4 is not None:
+        print(f"Method 4 (LU decomposition): null space dim = {null_4.shape[1]}")
     print()
    
