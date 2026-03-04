@@ -1,0 +1,40 @@
+import sys
+import sympy
+
+def main(coefficients):
+    """
+    Computes the product e_a1 * e_a2 * ... * e_an, where e_ai = x^{ai+1} partial.
+    The inputs are a list of coefficients a1, a2, ..., an.
+    """
+
+    # define symbolic variable for computation
+    X = sympy.symbols('X')
+
+    # define partial 'polynomial' as a list of coefficients
+    # expression[i] is the coefficient of partial^i
+    expression = [0, X**(coefficients[-1]+1)]
+
+    # iteratively multiply the partials right-to-left
+    for coefficient in coefficients[:-1][::-1]:
+        new_term = X**(coefficient+1)
+
+        # add the new partials
+        for i in range(0, len(expression)-1):
+            expression[i] = expression[i] + sympy.diff(expression[i+1])
+        
+        # multiply with the new coefficient
+        expression = [new_term * term for term in expression]
+        
+        # all coefficients are now shifted left; insert a new 0
+        expression.insert(0, 0)
+
+    # turn the resulting expression into a string expression
+    s = str(expression[1]) + " d"
+    for i, subexpr in enumerate(expression[2:]):
+        s += " + " + str(subexpr) + " d^" + str(i+2)
+    print(s)
+
+
+if __name__ == "__main__":
+    coefficients = [int(coef) for coef in sys.argv[1:]]
+    main(coefficients)
