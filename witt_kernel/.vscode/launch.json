@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Self-test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/psi_kernel_check.py",
+            "console": "integratedTerminal",
+            "args": ["--selftest"]
+        },
+        {
+            "name": "Check an element (edit args)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/psi_kernel_check.py",
+            "console": "integratedTerminal",
+            "args": ["-n", "1", "e5e1 - 3e4e2 + 3e3e3 - e2e4"]
+        },
+        {
+            "name": "Check a differentiator Omega^(M)_{K,S}",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/psi_kernel_check.py",
+            "console": "integratedTerminal",
+            "args": ["-n", "2", "--omega", "5", "7", "1"]
+        }
+    ]
+}
