@@ -14,6 +14,19 @@ python3 psi_kernel_check.py -n 2 --omega 5 7 1
 python3 psi_kernel_check.py -n 1 "e3e_{-1} - 4e2e0 + 6e1e1 - 4e0e2 + e_{-1}e3"
 ```
 
+### The interpolation elements z_ab
+
+`--zab A B` builds z_{AB} = e_A e_B - (words containing a low letter) by Lagrange interpolation,
+prints it (as written and in PBW form) and checks that it lies in ker Psi_n.
+For Psi_n the low letters are e_1, ..., e_{n+1}, so A, B >= n+2.
+`--zab-weight W` does this for every pair n+2 <= a <= b with a + b = W.
+
+```
+python3 psi_kernel_check.py -n 1 --zab 3 3        # = Omega^(3)_{5,1} / 3
+python3 psi_kernel_check.py -n 1 --zab-weight 10  # z_{37}, z_{46}, z_{55}
+python3 psi_kernel_check.py -n 2 --zab 4 4
+```
+
 Input: a sum of `coefficient word` terms; words are letters `e<i>` side by side
 (`e5e1`, `e3*e3`, `e_{-1}e3`). Coefficients may be fractions (`-4/3`).
 
