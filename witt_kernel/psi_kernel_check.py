@@ -14,6 +14,8 @@ Usage examples
   python3 psi_kernel_check.py -n 1 "e5e1 - 3e4e2 + 3e3e3 - e2e4"
   python3 psi_kernel_check.py -n 1 --omega 3 5 1          # differentiator Omega^(3)_{5,1}
   python3 psi_kernel_check.py -n 2 --omega 5 7 1
+  python3 psi_kernel_check.py -n 1 --zab 3 5               # build z_{35} and check it
+  python3 psi_kernel_check.py -n 1 --zab-weight 10         # all z_ab of weight 10
   python3 psi_kernel_check.py -n 1 "e3e3 + 1/3 e1e5 - 4/3 e2e4 + 2/3 e6"
   python3 psi_kernel_check.py -n 1 "e3e-1 - 4e2e0 + 6e1e1 - 4e0e2 + e-1e3"   # index -1 allowed
   python3 psi_kernel_check.py --selftest
@@ -72,6 +74,60 @@ def omega(m, k, s):
         w = (k - i, s + i)
         out[w] = out.get(w, 0) + Fraction((-1) ** i * comb(m, i))
     return {w: c for w, c in out.items() if c != 0}
+
+
+def zab(n, a, b):
+    """The interpolation element z_{ab} for Psi_n on U(W_{>=1}).
+
+    Low letters are e_1, ..., e_{n+1}; we need a, b >= n+2.  In weight w = a+b,
+    Psi_n(e_{w-c} e_c) is a polynomial of degree <= 2n in c, so it is determined by its
+    values at 2n+1 points.  We use the words containing a low letter: c = 1, ..., n+1
+    (second letter low) and c = w-n-1, ..., w-1 (first letter low), take the first 2n+1
+    of them, and Lagrange-interpolate at c = b:
+        z_{ab} = e_a e_b - sum_c L_c(b) e_{w-c} e_c   (lies in ker Psi_n).
+    Returned as a combination of two-letter words (use pbw() for PBW form).
+    """
+    low = n + 1
+    if a < low + 1 or b < low + 1:
+        raise ValueError(f"for n={n} the indices must satisfy a, b >= {low + 1}")
+    w = a + b
+    nodes = []
+    for c in list(range(1, low + 1)) + list(range(w - low, w)):
+        if c not in nodes:
+            nodes.append(c)
+    nodes = nodes[:2 * n + 1]
+    out = {(a, b): Fraction(1)}
+    for c in nodes:
+        L = Fraction(1)
+        for d in nodes:
+            if d != c:
+                L *= Fraction(b - d, c - d)
+        out[(w - c, c)] = out.get((w - c, c), 0) - L
+    return {k: v for k, v in out.items() if v != 0}
+
+
+@lru_cache(maxsize=None)
+def _pbw_word(word):
+    # PBW normal form in U(W_{>=-1}) (nondecreasing indices), [e_i, e_j] = (j - i) e_{i+j}
+    for i in range(len(word) - 1):
+        x, y = word[i], word[i + 1]
+        if x > y:
+            res = {}
+            for m, c in _pbw_word(word[:i] + (y, x) + word[i + 2:]):
+                res[m] = res.get(m, 0) + c
+            for m, c in _pbw_word(word[:i] + (x + y,) + word[i + 2:]):
+                res[m] = res.get(m, 0) + (y - x) * c
+            return tuple((m, c) for m, c in res.items() if c != 0)
+    return ((word, 1),)
+
+
+def pbw(element):
+    """Rewrite an element of U(W_{>=-1}) in PBW form (letters in nondecreasing order)."""
+    out = {}
+    for w, c in element.items():
+        for m, k in _pbw_word(w):
+            out[m] = out.get(m, 0) + c * k
+    return {m: c for m, c in out.items() if c != 0}
 
 
 # ---------------------------------------------------------------- the target T_n
@@ -188,6 +244,7 @@ def check(n, el, verbose=True):
     if verbose:
         print(f"n = {n}")
         print(f"element : {fmt_element(el)}")
+        print(f"PBW form: {fmt_element(pbw(el))}")
         print(f"weight  : {weight(el)}")
         print(f"Psi_n   : {fmt_T(img)}")
         print(f"in ker Psi_{n}: {'YES' if not img else 'NO'}")
@@ -205,13 +262,24 @@ def selftest():
         (2, omega(3, 5, 1), False, "Omega^(3)_{5,1} is NOT in ker Psi_2"),
         (2, omega(6, 5, -1), True, "Omega^(6)_{5,-1} (Pham-Timmins generator), n=2"),
         (1, parse_element("e3e4 + 1/2 e1e6 - 3/2 e2e5 + 1/2 e7"), True, "z_{34}, n=1"),
+        (1, zab(1, 3, 3), True, "--zab 3 3 (n=1)"),
+        (1, zab(1, 4, 7), True, "--zab 4 7 (n=1)"),
+        (2, zab(2, 4, 4), True, "--zab 4 4 (n=2)"),
+        (2, zab(2, 5, 9), True, "--zab 5 9 (n=2)"),
+        (3, zab(3, 5, 6), True, "--zab 5 6 (n=3)"),
     ]
+    # z_33 must equal Omega/3 in PBW form
+    target = pbw({w: c / 3 for w, c in omega(3, 5, 1).items()})
+    same = pbw(zab(1, 3, 3)) == target
+    ok_z = same
+    print(f"[{'ok' if same else 'FAILED'}] z_33 = Omega^(3)_(5,1)/3 in PBW form")
     ok = True
     for n, el, expected, name in cases:
         got = check(n, el, verbose=False)
         flag = "ok" if got == expected else "FAILED"
         ok &= got == expected
         print(f"[{flag}] {name}: in kernel = {got}")
+    ok &= ok_z
     print("all self-tests passed" if ok else "SOME SELF-TESTS FAILED")
     return ok
 
@@ -222,6 +290,10 @@ if __name__ == "__main__":
     ap.add_argument("-n", type=int, default=1, help="which orbit homomorphism Psi_n (default 1)")
     ap.add_argument("--omega", nargs=3, type=int, metavar=("M", "K", "S"),
                     help="use the differentiator Omega^(M)_{K,S} as the element")
+    ap.add_argument("--zab", nargs=2, type=int, metavar=("A", "B"),
+                    help="build the interpolation element z_{AB} (needs A, B >= n+2) and check it")
+    ap.add_argument("--zab-weight", type=int, metavar="W",
+                    help="build and check every z_{ab} with n+2 <= a <= b and a + b = W")
     ap.add_argument("--selftest", action="store_true", help="run built-in checks")
     # An element starting with '-' (e.g. "-e5e1+3e4e2") would be read as an option:
     # protect such tokens by a leading space (parse_element strips it).
@@ -232,7 +304,22 @@ if __name__ == "__main__":
 
     if args.selftest:
         sys.exit(0 if selftest() else 1)
-    if args.omega:
+    if args.zab_weight is not None:
+        W = args.zab_weight
+        pairs = [(a, W - a) for a in range(args.n + 2, W // 2 + 1) if W - a >= args.n + 2]
+        if not pairs:
+            ap.error(f"no pairs a, b >= {args.n + 2} with a + b = {W}")
+        for a, b in pairs:
+            print(f"--- z_{{{a},{b}}} ---")
+            check(args.n, zab(args.n, a, b))
+            print()
+        sys.exit(0)
+    if args.zab:
+        try:
+            el = zab(args.n, *args.zab)
+        except ValueError as exc:
+            ap.error(str(exc))
+    elif args.omega:
         el = omega(*args.omega)
     elif args.element:
         try:
@@ -240,5 +327,5 @@ if __name__ == "__main__":
         except ValueError as exc:
             ap.error(str(exc))
     else:
-        ap.error("give an element, --omega M K S, or --selftest")
+        ap.error("give an element, --omega M K S, --zab A B, --zab-weight W, or --selftest")
     check(args.n, el)
